@@ -51,7 +51,7 @@
     <!-- 2. 좌측 영역 (증시 지표 및 4개 섹터 뉴스) -->
     <section class="w-[24%] min-w-[320px] bg-[#FAF9F5] dark:bg-[#1A1D21] border-r border-slate-200/80 dark:border-slate-800 flex flex-col overflow-y-auto">
       
-      <!-- 증시 매크로 지표 카드 (동적 연동 ID 추가) -->
+      <!-- 증시 매크로 지표 카드 -->
       <div class="p-4 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
         <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200">📊 주요 증시 & 환율 동향</h2>
@@ -122,7 +122,7 @@
     <!-- 3. 중앙 영역 (초안 작성 & AI 첨삭) -->
     <section class="w-[52%] bg-[#F4F3EF] dark:bg-[#121417] flex flex-col overflow-y-auto px-8 pt-3 pb-6 space-y-4 select-text">
       
-      <!-- 선택 뉴스 참고 박스 (원문 URL 링크 포함) -->
+      <!-- 선택 뉴스 참고 박스 -->
       <div id="selected-news-box" class="bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 hidden shadow-sm">
         <div class="flex items-start justify-between">
           <div>
@@ -215,7 +215,7 @@
       </div>
     </section>
 
-    <!-- 4. 우측 영역 (검색 기반 아카이브) -->
+    <!-- 4. 우측 영역 (아카이브) -->
     <section class="w-[24%] min-w-[320px] bg-[#FAF9F5] dark:bg-[#1A1D21] border-l border-slate-200/80 dark:border-slate-800 flex flex-col overflow-hidden">
       <div class="p-5 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
         <div class="flex items-center justify-between mb-1.5">
@@ -298,7 +298,7 @@
         });
         const data = await response.json();
 
-        // 1. 주요 증시 지표 DOM 즉시 업데이트 (코스피, 코스닥, S&P500, 나스닥, 환율)
+        // 1. 주요 증시 지표 DOM 즉시 업데이트
         if (data.indices) {
           if (data.indices.kospi) {
             document.getElementById('idx-kospi-val').textContent = data.indices.kospi.val;
@@ -322,9 +322,9 @@
           }
         }
 
-        // 2. 4개 섹터 뉴스 반영
-        if (data.news) {
-          parseAndSetNewsData(data.news);
+        // 2. 4개 섹터 뉴스 및 AI 요약 반영
+        if (data.briefing || data.news) {
+          parseAndSetNewsData(data.news, data.briefing);
           switchSector(currentSector);
         }
 
@@ -332,7 +332,7 @@
         if (data.archives && Array.isArray(data.archives)) {
           ARCHIVES_CACHE = data.archives.map(item => ({
             id: item.id,
-            date: item.created_at ? new Date(item.created_at).toISOString().slice(0, 10) : '2026-11-05',
+            date: item.created_at ? new Date(item.created_at).toISOString().slice(0, 10) : '2026-11-06',
             title: item.title,
             summary: item.summary || '📌 핵심 관점 요약 없음',
             tags: item.tags || ['#블로그아카이브'],
@@ -345,36 +345,74 @@
       }
     }
 
-    function parseAndSetNewsData(rawNews) {
-      const parseSection = (text, sectorName) => {
-        if (!text) return [];
-        const rawItems = text.split(/(?=•\s*제목:)/).filter(b => b.trim());
-        return rawItems.map((raw, idx) => {
-          const titleMatch = raw.match(/•\s*제목:\s*([^\n]+)/);
-          const linkMatch = raw.match(/링크:\s*([^\n]+)/);
-          const summaryMatch = raw.match(/요약:\s*([\s\S]+)/);
-          
-          const title = titleMatch ? titleMatch[1].replace(/\s*-\s*[^-]+$/, '').trim() : '뉴스 제목';
-          const link = linkMatch ? linkMatch[1].trim() : '#';
-          let summary = summaryMatch ? summaryMatch[1].trim() : raw;
-          
-          // 제목과 요약이 중복 출력되는 현상 방지 필터링
-          summary = summary.replace(/^•\s*제목:[^\n]+\n?/, '').replace(/링크:[^\n]+\n?/, '').replace(/요약:\s*/, '').trim();
-    
-          return {
-            id: `${sectorName}_${idx}`,
-            sector: sectorName,
-            title: title,
-            link: link,
-            summary: summary.slice(0, 150) || '요약 정보가 없습니다.',
-            keywords: [sectorName, '실시간뉴스']
-          };
+    function parseAndSetNewsData(rawNews, briefingText) {
+      if (briefingText) {
+        // 📌 AI 브리핑(슬랙용 AI 요약) 데이터 우선 파싱
+        const sectorBlocks = briefingText.split(/###\s*/);
+        sectorBlocks.forEach(block => {
+          let targetSector = null;
+          if (block.includes('증시')) targetSector = 'stock';
+          else if (block.includes('가상자산') || block.includes('비트코인')) targetSector = 'crypto';
+          else if (block.includes('부동산')) targetSector = 'realestate';
+          else if (block.includes('AI') || block.includes('보안')) targetSector = 'ai';
+
+          if (!targetSector) return;
+
+          const items = block.split(/(?=\d+\.\s*📰)/).filter(b => b.includes('**뉴스 제목**'));
+          const sectorName = targetSector === 'stock' ? '증시' : targetSector === 'crypto' ? '가상자산' : targetSector === 'realestate' ? '부동산' : 'AI';
+
+          NEWS_DATA[targetSector] = items.map((itemStr, idx) => {
+            const titleMatch = itemStr.match(/\[(.*?)\]\((.*?)\)/);
+            const summaryMatch = itemStr.match(/📌\s*\*\*핵심 요약\*\*:\s*([^\n]+)/);
+            const ideaMatch = itemStr.match(/💡\s*\*\*글감 제안[^\*]*\*\*:\s*([\s\S]*?)(?=\n\d+\.|\n-|\n$|$)/);
+
+            const title = titleMatch ? titleMatch[1].trim() : '뉴스 제목';
+            const link = titleMatch ? titleMatch[2].trim() : '#';
+            let summary = summaryMatch ? summaryMatch[1].trim() : '요약 정보 없음';
+            const idea = ideaMatch ? ideaMatch[1].trim() : '';
+
+            return {
+              id: `${targetSector}_${idx}`,
+              sector: sectorName,
+              title: title,
+              link: link,
+              summary: summary,
+              idea: idea,
+              keywords: [sectorName, 'AI요약']
+            };
+          });
         });
-      };
-      NEWS_DATA.stock = parseSection(rawNews['증시'], '증시');
-      NEWS_DATA.crypto = parseSection(rawNews['가상자산'], '가상자산');
-      NEWS_DATA.realestate = parseSection(rawNews['부동산'], '부동산');
-      NEWS_DATA.ai = parseSection(rawNews['AI'], 'AI');
+      } else if (rawNews) {
+        // Fallback: rawNews 파싱 (제목 중복 방지)
+        const parseSection = (text, sectorName) => {
+          if (!text) return [];
+          const rawItems = text.split(/(?=•\s*제목:)/).filter(b => b.trim());
+          return rawItems.map((raw, idx) => {
+            const titleMatch = raw.match(/•\s*제목:\s*([^\n]+)/);
+            const linkMatch = raw.match(/링크:\s*([^\n]+)/);
+            const summaryMatch = raw.match(/요약:\s*([\s\S]+)/);
+
+            const title = titleMatch ? titleMatch[1].replace(/\s*-\s*[^-]+$/, '').trim() : '뉴스 제목';
+            const link = linkMatch ? linkMatch[1].trim() : '#';
+            let summary = summaryMatch ? summaryMatch[1].trim() : raw;
+
+            summary = summary.replace(/^•\s*제목:[^\n]+\n?/, '').replace(/링크:[^\n]+\n?/, '').replace(/요약:\s*/, '').trim();
+
+            return {
+              id: `${sectorName}_${idx}`,
+              sector: sectorName,
+              title: title,
+              link: link,
+              summary: summary.slice(0, 150) || '요약 정보가 없습니다.',
+              keywords: [sectorName, '실시간뉴스']
+            };
+          });
+        };
+        NEWS_DATA.stock = parseSection(rawNews['증시'], '증시');
+        NEWS_DATA.crypto = parseSection(rawNews['가상자산'], '가상자산');
+        NEWS_DATA.realestate = parseSection(rawNews['부동산'], '부동산');
+        NEWS_DATA.ai = parseSection(rawNews['AI'], 'AI');
+      }
     }
 
     function switchSector(sector) {
@@ -400,7 +438,7 @@
         card.innerHTML = `
           <div class="flex items-center justify-between mb-1.5">
             <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">${item.sector}</span>
-            <span class="text-[11px] font-medium text-slate-400">#실시간뉴스</span>
+            <span class="text-[11px] font-medium text-slate-400">#AI핵심요약</span>
           </div>
           <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug mb-1.5">${item.title}</h4>
           <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">${item.summary}</p>
@@ -422,7 +460,11 @@
           <span class="text-xs">🔗 원문보기</span>
         </a>
       `;
-      document.getElementById('ref-news-summary').textContent = item.summary;
+      
+      let refContent = item.summary;
+      if (item.idea) refContent += `\n\n💡 아이디어: ${item.idea}`;
+      document.getElementById('ref-news-summary').textContent = refContent;
+
       showToast(`📌 선택한 뉴스가 참고 박스에 주입되었습니다.`);
     }
 
