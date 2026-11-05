@@ -353,12 +353,20 @@
           const titleMatch = raw.match(/•\s*제목:\s*([^\n]+)/);
           const linkMatch = raw.match(/링크:\s*([^\n]+)/);
           const summaryMatch = raw.match(/요약:\s*([\s\S]+)/);
+          
+          const title = titleMatch ? titleMatch[1].replace(/\s*-\s*[^-]+$/, '').trim() : '뉴스 제목';
+          const link = linkMatch ? linkMatch[1].trim() : '#';
+          let summary = summaryMatch ? summaryMatch[1].trim() : raw;
+          
+          // 제목과 요약이 중복 출력되는 현상 방지 필터링
+          summary = summary.replace(/^•\s*제목:[^\n]+\n?/, '').replace(/링크:[^\n]+\n?/, '').replace(/요약:\s*/, '').trim();
+    
           return {
             id: `${sectorName}_${idx}`,
             sector: sectorName,
-            title: titleMatch ? titleMatch[1].trim() : '뉴스 제목',
-            link: linkMatch ? linkMatch[1].trim() : '#',
-            summary: summaryMatch ? summaryMatch[1].trim().slice(0, 160) : raw.slice(0, 120),
+            title: title,
+            link: link,
+            summary: summary.slice(0, 150) || '요약 정보가 없습니다.',
             keywords: [sectorName, '실시간뉴스']
           };
         });
