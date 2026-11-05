@@ -545,20 +545,48 @@
     async function runThreeStageRefiner() {
       const title = document.getElementById('draft-title').value.trim() || '인사이트 노트';
       const memo = document.getElementById('draft-memo').value.trim();
+      const btn = document.getElementById('btn-refine');
+      const engineBadge = document.getElementById('engine-badge');
+    
+      // 1. 유효성 검사
       if (!memo && !selectedNews) {
         showToast('⚠️ 뉴스를 선택하거나 메모를 작성해 주세요.');
         return;
       }
+    
+      // 2. 로딩 상태 표시
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      if (engineBadge) engineBadge.textContent = '생성 중...';
+      showToast('✨ AI가 3단 서사 원문을 생성 중입니다...');
+    
       try {
         const response = await fetch(WORKER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'web_draft', prompt: `[참고 뉴스]: ${selectedNews ? selectedNews.title : '없음'}\n[초안]: ${memo}` })
+          body: JSON.stringify({ 
+            type: 'web_draft', 
+            prompt: `[참고 뉴스]: ${selectedNews ? selectedNews.title : '없음'}\n[제목]: ${title}\n[초안]: ${memo}` 
+          })
         });
+    
+        if (!response.ok) throw new Error(`HTTP 에러 ${response.status}`);
+    
         const data = await response.json();
-        if (data.draft) document.getElementById('refined-output').value = data.draft.trim();
+        if (data.draft) {
+          document.getElementById('refined-output').value = data.draft.trim();
+          if (engineBadge) engineBadge.textContent = '생성 완료';
+          showToast('✅ 3단 서사 글 완성이 완료되었습니다!');
+        } else {
+          showToast('⚠️ AI 응답 텍스트가 비어있습니다.');
+        }
       } catch (err) {
-        showToast('⚠️ 오류 발생');
+        console.error('Refine Error:', err);
+        showToast(`⚠️ 생성 실패: ${err.message}`);
+        if (engineBadge) engineBadge.textContent = '오류 발생';
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = '1';
       }
     }
 
