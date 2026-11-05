@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>dad_luckyhappy | AI Insight Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <style>
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- 1. 상단 헤더 -->
+  <header class="h-14 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="w-3 h-6 bg-indigo-500"></div>
+      <h1 class="text-lg font-bold tracking-tight text-white">
+        dad_luckyhappy <span class="text-indigo-400 font-normal text-sm ml-1">AI Insight Studio</span>
+      </h1>
+      <span class="text-xs bg-slate-800 text-slate-300 px-2.5 py-1 border border-slate-700" id="kst-clock">
+        KST 불러오는 중...
+      </span>
+    </div>
+
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 border border-slate-700">
+        <span id="save-indicator" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="save-status-text">LocalStorage 자동 저장됨</span>
+      </div>
+      <div class="text-xs bg-indigo-950 text-indigo-300 px-3 py-1.5 border border-indigo-800">
+        ⚡ Cloudflare Worker 자동 연동 모드
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 3단 워크스페이스 -->
+  <main class="flex-1 flex overflow-hidden">
+
+    <!-- 2. 좌측 영역 (25% - 주요 증시 지표 & 오늘 뉴스 / Reader) -->
+    <section class="w-1/4 bg-slate-900/50 border-r border-slate-800 flex flex-col overflow-hidden">
+      <!-- 주요 증시 매크로 지표 카드 (수정 반영) -->
+      <div class="p-4 border-b border-slate-800 shrink-0">
+        <div class="flex items-center justify-between mb-2.5">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">📊 주요 증시 & 환율 동향 (전일 종가)</h2>
+          <span class="text-[11px] text-indigo-400">06:00 갱신</span>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <div class="bg-slate-800/80 border border-slate-700 p-2">
+            <div class="text-[10px] text-slate-400">코스피 (KOSPI)</div>
+            <div class="flex items-baseline justify-between mt-0.5">
+              <span class="text-sm font-bold text-white">2,582.40</span>
+              <span class="text-[11px] text-emerald-400 font-medium">+0.45% ▲</span>
+            </div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700 p-2">
+            <div class="text-[10px] text-slate-400">코스닥 (KOSDAQ)</div>
+            <div class="flex items-baseline justify-between mt-0.5">
+              <span class="text-sm font-bold text-white">745.20</span>
+              <span class="text-[11px] text-rose-400 font-medium">-0.12% ▼</span>
+            </div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700 p-2">
+            <div class="text-[10px] text-slate-400">S&P 500</div>
+            <div class="flex items-baseline justify-between mt-0.5">
+              <span class="text-sm font-bold text-white">5,864.67</span>
+              <span class="text-[11px] text-emerald-400 font-medium">+0.40% ▲</span>
+            </div>
+          </div>
+          <div class="bg-slate-800/80 border border-slate-700 p-2">
+            <div class="text-[10px] text-slate-400">NASDAQ</div>
+            <div class="flex items-baseline justify-between mt-0.5">
+              <span class="text-sm font-bold text-white">18,489.55</span>
+              <span class="text-[11px] text-emerald-400 font-medium">+0.83% ▲</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800/80 border border-slate-700 p-2 flex items-center justify-between">
+          <span class="text-xs text-slate-300 font-medium">💵 원/달러 환율 (USD/KRW)</span>
+          <div class="flex items-baseline space-x-1.5">
+            <span class="text-sm font-bold text-indigo-300">1,384.50원</span>
+            <span class="text-[10px] text-amber-400">+2.50원 ▲</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 오늘의 3대 섹터 뉴스 9선 -->
+      <div class="flex-1 flex flex-col overflow-hidden p-4">
+        <div class="flex items-center justify-between mb-3 shrink-0">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">📰 오늘의 3대 섹터 뉴스 9선</h2>
+          <span class="text-[11px] text-slate-500">클릭 시 중앙 주입</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-1 bg-slate-800 p-1 mb-3 shrink-0 border border-slate-700">
+          <button onclick="switchSector('stock')" id="tab-stock" class="text-xs py-1.5 font-semibold bg-indigo-600 text-white transition">증시/매크로 (3)</button>
+          <button onclick="switchSector('crypto')" id="tab-crypto" class="text-xs py-1.5 font-medium text-slate-400 hover:text-white transition">가상자산 (3)</button>
+          <button onclick="switchSector('realestate')" id="tab-realestate" class="text-xs py-1.5 font-medium text-slate-400 hover:text-white transition">부동산/정비 (3)</button>
+        </div>
+
+        <div id="news-list-container" class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+          <!-- JS 렌더링 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 중앙 영역 (50% - 초안 작성 & AI 첨삭 / Writer & Refiner) -->
+    <section class="w-2/4 bg-slate-950 flex flex-col overflow-y-auto p-5 space-y-4 select-text">
+      
+      <!-- 선택 뉴스 참고 박스 -->
+      <div id="selected-news-box" class="bg-slate-900 border border-indigo-500/40 p-3.5 hidden">
+        <div class="flex items-start justify-between">
+          <div>
+            <span id="ref-news-sector" class="text-[10px] font-bold uppercase px-2 py-0.5 bg-indigo-950 text-indigo-300 border border-indigo-800">섹터</span>
+            <h3 id="ref-news-title" class="text-sm font-bold text-white mt-1.5">선택된 뉴스 제목</h3>
+          </div>
+          <button onclick="clearSelectedNews()" class="text-xs text-slate-400 hover:text-rose-400 px-2 py-0.5 border border-slate-700">✕ 취소</button>
+        </div>
+        <p id="ref-news-summary" class="text-xs text-slate-300 mt-1.5 leading-relaxed"></p>
+      </div>
+
+      <!-- 제목 & 초안 작성 에디터 -->
+      <div class="bg-slate-900 border border-slate-800 p-4 flex flex-col space-y-3">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">✍️ 1단계: 내 핵심 관점 메모 (60~70% 초안)</label>
+          <div class="text-xs text-slate-400 space-x-2">
+            <span id="char-count">0자</span>
+            <span>·</span>
+            <span id="word-count">0단어</span>
+            <span>·</span>
+            <span id="read-time" class="text-indigo-400">예상 독서 1분 미만</span>
+          </div>
+        </div>
+
+        <input 
+          id="draft-title" 
+          type="text" 
+          placeholder="포스팅 제목 또는 핵심 주제를 입력하세요 (예: 환율 1380원대 진입과 미국 대형 기술주 실적 점검)"
+          class="w-full bg-slate-950 border border-slate-700 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+          oninput="handleDraftInput()"
+        />
+
+        <textarea 
+          id="draft-memo" 
+          rows="5"
+          placeholder="좌측 뉴스나 증시 지표를 보고 떠오른 개인 아이디어/메모를 자유롭게 적어주세요.&#10;예: 달러 환율이 상방 압력을 받는 와중에 빅테크 실적 호조로 나스닥이 반등함. 수입 물가 부담과 증시 상승이 상충하는 구간이라 국내 증시는 차별화 장세가 이어질 듯."
+          class="w-full bg-slate-950 border border-slate-700 p-3.5 text-sm text-slate-200 placeholder-slate-500 leading-relaxed focus:outline-none focus:border-indigo-500 resize-y"
+          oninput="handleDraftInput()"
+        ></textarea>
+
+        <div class="flex items-center justify-between pt-1">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs text-slate-400">오늘의 뷰 태그:</span>
+            <input 
+              id="draft-tags" 
+              type="text" 
+              placeholder="#환율 #나스닥 #증시전망" 
+              class="bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs text-indigo-300 w-56 focus:outline-none focus:border-indigo-500"
+              oninput="handleDraftInput()"
+            />
+          </div>
+
+          <button 
+            onclick="runThreeStageRefiner()" 
+            id="btn-refine"
+            class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 flex items-center space-x-2 transition shadow-sm"
+          >
+            <span>✨ AI 3단 서사 첨삭 및 다듬기</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 정제 결과 에디터 (영구 박제 버튼 삭제 적용) -->
+      <div class="bg-slate-900 border border-slate-800 p-4 flex-1 flex flex-col space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <label class="text-xs font-semibold uppercase tracking-wider text-emerald-400">📝 2단계: 3단 서사 완결문 캔버스 (최종 교정)</label>
+            <span id="engine-badge" class="text-[11px] bg-slate-800 text-slate-400 px-2 py-0.5 border border-slate-700">대기 중</span>
+          </div>
+        </div>
+
+        <textarea 
+          id="refined-output" 
+          rows="11"
+          placeholder="[✨ AI 3단 서사 첨삭 및 다듬기] 버튼을 누르면 Cloudflare Worker 파이프라인을 거쳐 이곳에 완결문이 출력됩니다."
+          class="w-full flex-1 bg-slate-950 border border-slate-700 p-4 text-sm text-slate-100 leading-relaxed focus:outline-none focus:border-emerald-500 resize-y"
+        ></textarea>
+
+        <!-- 복사 기능 3종 (Threads n/N 연속 분할 적용) -->
+        <div class="grid grid-cols-3 gap-2.5 pt-1">
+          <button 
+            onclick="copyForNaverSmartEditor()" 
+            class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-2.5 px-3 flex items-center justify-center space-x-1.5 transition"
+          >
+            <span>🟢 네이버 서식 복사</span>
+          </button>
+          <button 
+            onclick="copyPlainText()" 
+            class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold py-2.5 px-3 border border-slate-600 flex items-center justify-center space-x-1.5 transition"
+          >
+            <span>📄 일반 텍스트 복사</span>
+          </button>
+          <button 
+            onclick="copyThreadsFormat()" 
+            class="bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-semibold py-2.5 px-3 border border-slate-600 flex items-center justify-center space-x-1.5 transition"
+          >
+            <span>🧵 스레드(Threads) n/N 분할 복사</span>
+          </button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 4. 우측 영역 (25% - 과거 관점 회상 영역 / Read-Only) -->
+    <section class="w-1/4 bg-slate-900/50 border-l border-slate-800 flex flex-col overflow-hidden">
+      <div class="p-4 border-b border-slate-800 shrink-0">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">🧠 과거 관점 회상 (Read-Only)</h2>
+          <span class="text-[11px] text-slate-500">dad_luckyhappy</span>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-3">
+          본문 직접 이관 없이 past context의 논리와 아이디어만 눈으로 참고합니다.
+        </p>
+
+        <div class="flex space-x-1.5">
+          <input 
+            id="archive-search" 
+            type="text" 
+            placeholder="과거 키워드 검색 (예: 금리, 아현, 밸류업)"
+            class="flex-1 bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            oninput="renderArchiveList()"
+          />
+          <button onclick="resetArchiveFilter()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1.5 border border-slate-700">
+            전체
+          </button>
+        </div>
+      </div>
+
+      <div id="archive-list-container" class="flex-1 overflow-y-auto p-4 space-y-3 select-text">
+        <!-- JS 렌더링 -->
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 border border-indigo-500 text-white text-xs font-medium px-4 py-3 shadow-lg hidden z-50">
+    알림 메시지
+  </div>
+
+  <script>
+    // Cloudflare Worker 엔드포인트 URL (본인 URL로 변경)
+    const WORKER_URL = "https://slack-second-brain.dloolb7.workers.dev/";
+
+    const NEWS_DATA = {
+      stock: [
+        {
+          id: 's1',
+          sector: '증시/매크로',
+          title: 'S&P 500 및 나스닥, 빅테크 호실적에 힙입어 상승 마감',
+          summary: '주요 클라우드 하이퍼스케일러들의 CAPEX 확대 소식과 견조한 실적 발표로 증시 연착륙 기대감 지속.',
+          keywords: ['증시', '매크로', '빅테크']
+        },
+        {
+          id: 's2',
+          sector: '증시/매크로',
+          title: '원/달러 환율 1,380원대 상방 압력에도 외국인 주식 순매수 유지',
+          summary: '달러 강세 기조 속에 환율이 상승했으나 국내 반도체/금융 밸류체인을 중심으로 외국인 자금 이탈은 제한적.',
+          keywords: ['환율', '증시']
+        },
+        {
+          id: 's3',
+          sector: '증시/매크로',
+          title: '금융당국 밸류업 펀드 본격 가동, 기업가치 제고 공시 기업 수혜 전망',
+          summary: '자사주 소각 및 주주환원율 향상을 공시한 주요 대형주로 기관 패시브 자금 유입 가속화.',
+          keywords: ['밸류업', '주식시황']
+        }
+      ],
+      crypto: [
+        {
+          id: 'c1',
+          sector: '가상자산',
+          title: '비트코인 현물 ETF 자금 순유입 지속, 기관 장기 보유 비중 증가',
+          summary: '글로벌 자산운용사들의 비트코인 펀드 보유량이 최고치를 경신하며 가상자산 시장의 지정학적 헤지 수단 기능 부각.',
+          keywords: ['비트코인', 'ETF']
+        },
+        {
+          id: 'c2',
+          sector: '가상자산',
+          title: '이더리움 온체인 트랜잭션 증가 및 레이어2 수수료 절감 효과 가시화',
+          summary: '디파이 및 온체인 국채 토큰화(RWA) 프로젝트의 확장으로 스마트 컨트랙트 메인넷 유동성 확대.',
+          keywords: ['이더리움', '가상자산']
+        },
+        {
+          id: 'c3',
+          sector: '가상자산',
+          title: '스테이블코인 시가총액 우상향, 글로벌 거래소 대기 자금 넉넉',
+          summary: 'USDT 및 USDC 발행량이 지속 증가하며 하방 지지력을 형성하는 자금 유입 신호로 해석.',
+          keywords: ['스테이블코인']
+        }
+      ],
+      realestate: [
+        {
+          id: 'r1',
+          sector: '부동산/정비',
+          title: '마포구 아현뉴타운 주요 단지 신고가 거래, 도심 직주근접 수요 쏠림',
+          summary: '공급 부족 우려 속에 입지 희소성이 입증된 도심 신축 단지를 중심으로 실거래가 상승세 지속.',
+          keywords: ['아현', '부동산']
+        },
+        {
+          id: 'r2',
+          sector: '부동산/정비',
+          title: '봉천동 재개발 사업시행인가 속도, 관악구 서남권 정비사업 변곡점',
+          summary: '신속통합기획 적용 단지들의 인허가 절차가 빠르게 진행되며 도심 접근성 대비 저평가 인식 확산.',
+          keywords: ['봉천', '재개발']
+        },
+        {
+          id: 'r3',
+          sector: '부동산/정비',
+          title: '서울 아파트 분양가 상한제 및 정비사업 공사비 협상 타결 사례 증가',
+          summary: '공사비 증액 갈등을 넘긴 관리처분인가 완료 구역들의 사업 불확실성이 제거되며 프리미엄 안정화.',
+          keywords: ['정비사업', '부동산']
+        }
+      ]
+    };
+
+    const DEFAULT_ARCHIVE = [
+      {
+        id: 'a1',
+        date: '2026-08-14',
+        title: '환율 1350원 돌파 국면에서 주식 비중을 유지했던 이유',
+        coreClaim: '환율 상승이 무조건적인 자금 이탈을 뜻하지는 않는다. 기업 이익 체력이 유지되고 외국인 순매수가 병행된다면 구조적 펀더멘털을 더 높게 평가해야 한다.',
+        tags: ['#환율', '#매크로', '#증시관점'],
+        snapshot: '당시 환율 1,355원 | KOSPI 2,590'
+      },
+      {
+        id: 'a2',
+        date: '2026-06-22',
+        title: '도심권 정비사업 옥석 가리기: 아현뉴타운과 서남권 축',
+        coreClaim: '공사비 인상은 모든 구역에 동일하게 적용된다. 결국 일반분양가 상향으로 분담금을 방어할 수 있는 도심 직주근접 단지가 리스크 헷지의 핵심이다.',
+        tags: ['#아현', '#봉천', '#정비사업'],
+        snapshot: '당시 마포구 매매지수 +0.18%'
+      }
+    ];
+
+    let currentSector = 'stock';
+    let selectedNews = null;
+    let saveTimer = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      updateClock();
+      setInterval(updateClock, 1000);
+      switchSector('stock');
+      loadFromLocalStorage();
+      renderArchiveList();
+    });
+
+    function updateClock() {
+      const now = new Date();
+      const options = {
+        timeZone: 'Asia/Seoul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      };
+      document.getElementById('kst-clock').textContent = `KST ${new Intl.DateTimeFormat('ko-KR', options).format(now)}`;
+    }
+
+    function switchSector(sector) {
+      currentSector = sector;
+      ['stock', 'crypto', 'realestate'].forEach(s => {
+        const btn = document.getElementById(`tab-${s}`);
+        btn.className = s === sector 
+          ? 'text-xs py-1.5 font-semibold bg-indigo-600 text-white transition' 
+          : 'text-xs py-1.5 font-medium text-slate-400 hover:text-white transition';
+      });
+
+      const container = document.getElementById('news-list-container');
+      container.innerHTML = '';
+
+      NEWS_DATA[sector].forEach(item => {
+        const isSelected = selectedNews && selectedNews.id === item.id;
+        const card = document.createElement('div');
+        card.className = `p-3 border cursor-pointer transition ${
+          isSelected ? 'bg-indigo-950/60 border-indigo-500' : 'bg-slate-800/50 border-slate-700/80 hover:border-slate-500'
+        }`;
+        card.onclick = () => selectNewsCard(item);
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-[10px] font-semibold text-indigo-400">${item.sector}</span>
+            <span class="text-[10px] text-slate-400">${item.keywords.map(k => '#' + k).join(' ')}</span>
+          </div>
+          <h4 class="text-xs font-bold text-slate-100 leading-snug mb-1.5">${item.title}</h4>
+          <p class="text-[11px] text-slate-400 leading-relaxed line-clamp-2">${item.summary}</p>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function selectNewsCard(item) {
+      selectedNews = item;
+      switchSector(currentSector);
+
+      document.getElementById('selected-news-box').classList.remove('hidden');
+      document.getElementById('ref-news-sector').textContent = item.sector;
+      document.getElementById('ref-news-title').textContent = item.title;
+      document.getElementById('ref-news-summary').textContent = item.summary;
+
+      if (item.keywords && item.keywords.length > 0) {
+        document.getElementById('archive-search').value = item.keywords[0];
+        renderArchiveList();
+      }
+      showToast(`📌 뉴스 맥락이 주입되었으며, 우측에 '${item.keywords[0]}' 관련 과거 관점이 소환되었습니다.`);
+    }
+
+    function clearSelectedNews() {
+      selectedNews = null;
+      document.getElementById('selected-news-box').classList.add('hidden');
+      switchSector(currentSector);
+      resetArchiveFilter();
+    }
+
+    function handleDraftInput() {
+      const title = document.getElementById('draft-title').value;
+      const memo = document.getElementById('draft-memo').value;
+      const tags = document.getElementById('draft-tags').value;
+
+      const charLen = memo.length;
+      const wordLen = memo.trim() ? memo.trim().split(/\s+/).length : 0;
+      const readMin = Math.max(1, Math.ceil(charLen / 500));
+
+      document.getElementById('char-count').textContent = `${charLen.toLocaleString()}자`;
+      document.getElementById('word-count').textContent = `${wordLen.toLocaleString()}단어`;
+      document.getElementById('read-time').textContent = `예상 독서 약 ${readMin}분`;
+
+      const indicator = document.getElementById('save-indicator');
+      const statusText = document.getElementById('save-status-text');
+      indicator.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+      statusText.textContent = '자동 저장 중...';
+
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        localStorage.setItem('dad_studio_draft', JSON.stringify({ title, memo, tags }));
+        indicator.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        statusText.textContent = 'LocalStorage 자동 저장됨';
+      }, 400);
+    }
+
+    function loadFromLocalStorage() {
+      const saved = localStorage.getItem('dad_studio_draft');
+      if (saved) {
+        try {
+          const { title, memo, tags } = JSON.parse(saved);
+          document.getElementById('draft-title').value = title || '';
+          document.getElementById('draft-memo').value = memo || '';
+          document.getElementById('draft-tags').value = tags || '';
+          handleDraftInput();
+        } catch (e) {}
+      }
+      if (!localStorage.getItem('dad_studio_archive')) {
+        localStorage.setItem('dad_studio_archive', JSON.stringify(DEFAULT_ARCHIVE));
+      }
+    }
+
+    // ✨ AI 3단 서사 첨삭 (Cloudflare Worker 자동 호출)
+    async function runThreeStageRefiner() {
+      const title = document.getElementById('draft-title').value.trim() || '오늘자 매크로 현황 및 인사이트 노트';
+      const memo = document.getElementById('draft-memo').value.trim();
+      const btn = document.getElementById('btn-refine');
+      const badge = document.getElementById('engine-badge');
+
+      if (!memo && !selectedNews) {
+        showToast('⚠️ 좌측 뉴스를 선택하거나 메모(60~70%)를 작성해 주세요.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳ Cloudflare Worker 정제 처리 중...</span>';
+      badge.textContent = 'Worker API 가동 중';
+      badge.className = 'text-[11px] bg-indigo-950 text-indigo-300 px-2 py-0.5 border border-indigo-700';
+
+      const promptText = `[뉴스 참고]: ${selectedNews ? selectedNews.title + ' - ' + selectedNews.summary : '없음'}\n[가제]: ${title}\n[초안 메모]: ${memo}`;
+
+      try {
+        const response = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'web_draft',
+            prompt: promptText
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.draft) {
+          document.getElementById('refined-output').value = data.draft.trim();
+          badge.textContent = 'Cloudflare Worker 정제 완료';
+          showToast('✨ Worker 및 Gemini 파이프라인으로 완성본이 작성되었습니다.');
+        } else {
+          throw new Error(data.error || 'Worker 응답에 draft 필드가 없습니다.');
+        }
+      } catch (err) {
+        console.warn('Worker 호출 오류로 시뮬레이션 폴백 실행:', err);
+        runSimulationFallback(title, memo);
+        badge.textContent = '시뮬레이션 엔진 (Worker 연결 확인 필요)';
+        badge.className = 'text-[11px] bg-amber-950 text-amber-300 px-2 py-0.5 border border-amber-800';
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '<span>✨ AI 3단 서사 첨삭 및 다듬기</span>';
+    }
+
+    function runSimulationFallback(title, memo) {
+      const refTitle = selectedNews ? selectedNews.title : '증시 변동성과 매크로 수치';
+      const userLogic = memo || '시장 단기 변동성보다 구조적 신용 안정성과 이익 체력에 집중할 타이밍입니다.';
+
+      const simulatedText = `■ ${title}
+
+[1단: 오늘의 팩트와 맥락 연결]
+오늘 다루는 핵심 이슈는 '${refTitle}'입니다. 최근 시장의 수치를 종합하면 변동성 지표가 일시적으로 흔들렸으나 핵심 축은 유지되는 모습입니다. 단편적 헤드라인에 좌우되기보다 수치 뒤의 구조를 짚어보는 것이 필요한 시점입니다.
+
+[2단: dad_luckyhappy의 관점 및 데이터 해석]
+이번 국면을 바라보는 핵심 축은 명확합니다. ${userLogic}
+과거 경험에서도 확인했듯, 시장의 섣부른 공포와 실제 데이터 사이의 갭을 파악하는 자가 결국 중심을 잡았습니다. 본인의 기준을 유지하며 관찰을 이어나가는 것이 바람직합니다.
+
+[3단: 투자 시사점 및 다음 관찰 포인트]
+"소음을 이기는 것은 언제나 확인된 데이터와 시간이 만들어내는 복리입니다."
+다음 글에서는 이번 이슈의 후속 반응과 주요 수치의 변화 추이를 연속해서 추적해 보겠습니다.`;
+
+      document.getElementById('refined-output').value = simulatedText;
+    }
+
+    // 복사 기능 1: 네이버 스마트에디터 최적화
+    async function copyForNaverSmartEditor() {
+      const rawText = document.getElementById('refined-output').value.trim();
+      if (!rawText) {
+        showToast('⚠️ 복사할 완결문이 없습니다.');
+        return;
+      }
+
+      const lines = rawText.split('\n');
+      let htmlParts = [`<div style="font-family: 'Nanum Gothic', sans-serif; font-size: 16px; line-height: 1.85; color: #222222;">`];
+
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          htmlParts.push(`<p style="margin: 0 0 14px 0;">&nbsp;</p>`);
+        } else if (trimmed.startsWith('■')) {
+          htmlParts.push(`<h2 style="font-size: 22px; font-weight: 700; color: #111827; margin: 10px 0 20px 0; padding-bottom: 8px; border-bottom: 2px solid #1e293b;">${trimmed.replace('■', '').trim()}</h2>`);
+        } else if (trimmed.startsWith('[1단:') || trimmed.startsWith('[2단:') || trimmed.startsWith('[3단:')) {
+          htmlParts.push(`<blockquote style="margin: 24px 0 12px 0; padding: 12px 16px; background-color: #f8fafc; border-left: 4px solid #03c75a; font-weight: 700; color: #111827;">${trimmed}</blockquote>`);
+        } else if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+          htmlParts.push(`<blockquote style="margin: 18px 0; padding: 16px 20px; background-color: #f1f5f9; border-radius: 6px; font-style: italic; font-weight: 600; color: #0f172a; text-align: center;">${trimmed}</blockquote>`);
+        } else {
+          htmlParts.push(`<p style="margin: 0 0 14px 0; color: #333333;">${trimmed}</p>`);
+        }
+      });
+
+      const tags = document.getElementById('draft-tags').value.trim();
+      if (tags) htmlParts.push(`<p style="margin-top: 24px; color: #03c75a; font-weight: 600;">${tags}</p>`);
+      htmlParts.push(`</div>`);
+
+      try {
+        const blobHtml = new Blob([htmlParts.join('')], { type: 'text/html' });
+        const blobText = new Blob([rawText], { type: 'text/plain' });
+        await navigator.clipboard.write([new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })]);
+        showToast('🟢 네이버 스마트에디터 최적화 서식이 복사되었습니다! Ctrl+V 하세요.');
+      } catch (e) {
+        await navigator.clipboard.writeText(rawText);
+        showToast('📄 클립보드에 복사되었습니다.');
+      }
+    }
+
+    // 복사 기능 2: 일반 텍스트
+    async function copyPlainText() {
+      const rawText = document.getElementById('refined-output').value.trim();
+      if (!rawText) {
+        showToast('⚠️ 복사할 본문이 없습니다.');
+        return;
+      }
+      await navigator.clipboard.writeText(rawText);
+      showToast('📄 일반 텍스트가 복사되었습니다.');
+    }
+
+    // 복사 기능 3: 스레드(Threads) 500자 n/N 분할 카딩 복사
+    async function copyThreadsFormat() {
+      const rawText = document.getElementById('refined-output').value.trim() || document.getElementById('draft-memo').value.trim();
+      if (!rawText) {
+        showToast('⚠️ 분할 복사할 본문이나 메모가 없습니다.');
+        return;
+      }
+
+      const maxChunkSize = 450;
+      const paragraphs = rawText.split('\n');
+      let chunks = [];
+      let currentChunk = "";
+
+      paragraphs.forEach(p => {
+        if ((currentChunk + "\n" + p).length > maxChunkSize) {
+          if (currentChunk.trim()) chunks.push(currentChunk.trim());
+          currentChunk = p;
+        } else {
+          currentChunk += (currentChunk ? "\n" : "") + p;
+        }
+      });
+      if (currentChunk.trim()) chunks.push(currentChunk.trim());
+
+      const total = chunks.length;
+      const formattedThreads = chunks.map((c, idx) => `[${idx + 1}/${total}]\n${c}`).join('\n\n---\n\n');
+
+      await navigator.clipboard.writeText(formattedThreads);
+      showToast(`🧵 총 ${total}개의 연속 스레드 카드로 분할 복사되었습니다!`);
+    }
+
+    // 우측 타임라인 렌더링
+    function renderArchiveList() {
+      const container = document.getElementById('archive-list-container');
+      const query = document.getElementById('archive-search').value.trim().toLowerCase();
+      const archives = JSON.parse(localStorage.getItem('dad_studio_archive') || '[]');
+
+      container.innerHTML = '';
+
+      const filtered = archives.filter(item => {
+        if (!query) return true;
+        return (
+          item.title.toLowerCase().includes(query) ||
+          item.coreClaim.toLowerCase().includes(query) ||
+          item.tags.some(t => t.toLowerCase().includes(query))
+        );
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 text-center py-8 border border-dashed border-slate-800">해당 키워드로 검색된 과거 기록이 없습니다.</div>`;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'bg-slate-800/40 border border-slate-800 p-3.5 space-y-2';
+        card.innerHTML = `
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-mono text-indigo-400">${item.date}</span>
+            <span class="text-[10px] bg-slate-900 text-slate-400 px-2 py-0.5 border border-slate-700">${item.snapshot}</span>
+          </div>
+          <h4 class="text-xs font-bold text-slate-200 leading-snug">${item.title}</h4>
+          <p class="text-xs text-slate-300 leading-relaxed bg-slate-900/70 p-2.5 border-l-2 border-slate-600">
+            ${item.coreClaim}
+          </p>
+          <div class="flex flex-wrap gap-1 pt-0.5">
+            ${item.tags.map(t => `<span class="text-[10px] text-slate-400 bg-slate-900 px-1.5 py-0.5">${t}</span>`).join('')}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function resetArchiveFilter() {
+      document.getElementById('archive-search').value = '';
+      renderArchiveList();
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 3200);
+    }
+  </script>
+</body>
+</html>
