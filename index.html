@@ -67,86 +67,86 @@
   <!-- 메인 3단 워크스페이스 -->
   <main class="flex-1 flex overflow-hidden">
 
-    <!-- 2. 좌측 영역 (24% - 주요 증시 지표 & 오늘 뉴스 / Reader) -->
-    <section class="w-[24%] min-w-[320px] bg-[#FAF9F5] dark:bg-[#1A1D21] border-r border-slate-200/80 dark:border-slate-800 flex flex-col overflow-hidden">
-      <!-- 주요 증시 매크로 지표 카드 -->
-      <div class="p-5 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
-        <div class="flex items-center justify-between mb-3.5">
+    <!-- 2. 좌측 영역 (24% - 주요 증시 지표 & 오늘 뉴스 / Reader) - 전체 스크롤 가능 처리 -->
+    <section class="w-[24%] min-w-[320px] bg-[#FAF9F5] dark:bg-[#1A1D21] border-r border-slate-200/80 dark:border-slate-800 flex flex-col overflow-y-auto">
+      <!-- 주요 증시 매크로 지표 카드 (ID 추가 및 텍스트 겹침 방지 레이아웃 개선) -->
+      <div class="p-4 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
+        <div class="flex items-center justify-between mb-2.5">
           <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200">📊 주요 증시 & 환율 동향</h2>
           <span class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded">06:00 갱신</span>
         </div>
 
-        <div class="grid grid-cols-2 gap-2.5 mb-2.5">
-          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-3">
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">코스피 (KOSPI)</div>
-            <div class="flex items-baseline justify-between mt-1">
-              <span class="text-lg font-extrabold text-slate-900 dark:text-white">2,582.40</span>
-              <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400">+0.45% ▲</span>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-2.5 flex flex-col justify-between">
+            <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">코스피 (KOSPI)</div>
+            <div class="flex items-baseline justify-between gap-1 mt-1 flex-wrap">
+              <span id="idx-kospi-val" class="text-base font-extrabold text-slate-900 dark:text-white">2,582.40</span>
+              <span id="idx-kospi-change" class="text-xs font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">+0.45% ▲</span>
             </div>
           </div>
 
-          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-3">
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">코스닥 (KOSDAQ)</div>
-            <div class="flex items-baseline justify-between mt-1">
-              <span class="text-lg font-extrabold text-slate-900 dark:text-white">745.20</span>
-              <span class="text-xs font-bold text-rose-600 dark:text-rose-400">-0.12% ▼</span>
+          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-2.5 flex flex-col justify-between">
+            <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">코스닥 (KOSDAQ)</div>
+            <div class="flex items-baseline justify-between gap-1 mt-1 flex-wrap">
+              <span id="idx-kosdaq-val" class="text-base font-extrabold text-slate-900 dark:text-white">745.20</span>
+              <span id="idx-kosdaq-change" class="text-xs font-bold text-rose-600 dark:text-rose-400 whitespace-nowrap">-0.12% ▼</span>
             </div>
           </div>
 
-          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-3">
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">S&P 500</div>
-            <div class="flex items-baseline justify-between mt-1">
-              <span class="text-lg font-extrabold text-slate-900 dark:text-white">5,864.67</span>
-              <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400">+0.40% ▲</span>
+          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-2.5 flex flex-col justify-between">
+            <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">S&P 500</div>
+            <div class="flex items-baseline justify-between gap-1 mt-1 flex-wrap">
+              <span id="idx-sp500-val" class="text-base font-extrabold text-slate-900 dark:text-white">5,864.67</span>
+              <span id="idx-sp500-change" class="text-xs font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">+0.40% ▲</span>
             </div>
           </div>
 
-          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-3">
-            <div class="text-xs font-medium text-slate-500 dark:text-slate-400">NASDAQ</div>
-            <div class="flex items-baseline justify-between mt-1">
-              <span class="text-lg font-extrabold text-slate-900 dark:text-white">18,489.55</span>
-              <span class="text-xs font-bold text-emerald-600 dark:text-emerald-400">+0.83% ▲</span>
+          <div class="bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/80 dark:border-slate-700/50 rounded-xl p-2.5 flex flex-col justify-between">
+            <div class="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">NASDAQ</div>
+            <div class="flex items-baseline justify-between gap-1 mt-1 flex-wrap">
+              <span id="idx-nasdaq-val" class="text-base font-extrabold text-slate-900 dark:text-white">18,489.55</span>
+              <span id="idx-nasdaq-change" class="text-xs font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">+0.83% ▲</span>
             </div>
           </div>
         </div>
 
-        <div class="bg-indigo-50/70 dark:bg-[#22262B] border border-indigo-100 dark:border-slate-700/50 rounded-xl p-3 flex items-center justify-between">
-          <span class="text-xs font-bold text-slate-700 dark:text-slate-300">💵 원/달러 환율 (USD/KRW)</span>
-          <div class="flex items-baseline space-x-2">
-            <span class="text-base font-extrabold text-indigo-700 dark:text-indigo-300">1,384.50원</span>
-            <span class="text-xs font-bold text-amber-600 dark:text-amber-400">+2.50원 ▲</span>
+        <div class="bg-indigo-50/70 dark:bg-[#22262B] border border-indigo-100 dark:border-slate-700/50 rounded-xl p-2.5 flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-700 dark:text-slate-300">💵 원/달러 환율</span>
+          <div class="flex items-baseline space-x-1.5 whitespace-nowrap">
+            <span id="idx-usdkrw-val" class="text-sm font-extrabold text-indigo-700 dark:text-indigo-300">1,384.50원</span>
+            <span id="idx-usdkrw-change" class="text-xs font-bold text-amber-600 dark:text-amber-400">+2.50원 ▲</span>
           </div>
         </div>
       </div>
 
       <!-- 오늘의 3대 섹터 뉴스 9선 -->
-      <div class="flex-1 flex flex-col overflow-hidden p-5">
-        <div class="flex items-center justify-between mb-3.5 shrink-0">
+      <div class="flex-1 flex flex-col p-4 space-y-3">
+        <div class="flex items-center justify-between shrink-0">
           <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200">📰 오늘의 3대 섹터 뉴스</h2>
-          <span class="text-xs text-slate-400">클릭 시 중앙 에디터 주입</span>
+          <span class="text-xs text-slate-400">클릭 시 중앙 주입</span>
         </div>
 
-        <div class="grid grid-cols-3 gap-1.5 bg-slate-200/70 dark:bg-[#22262B] p-1.5 rounded-xl mb-4 shrink-0">
-          <button onclick="switchSector('stock')" id="tab-stock" class="text-xs py-2 rounded-lg font-bold bg-[#FAF9F5] dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm transition">증시/매크로</button>
-          <button onclick="switchSector('crypto')" id="tab-crypto" class="text-xs py-2 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 transition">가상자산</button>
-          <button onclick="switchSector('realestate')" id="tab-realestate" class="text-xs py-2 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 transition">부동산/정비</button>
+        <div class="grid grid-cols-3 gap-1 bg-slate-200/70 dark:bg-[#22262B] p-1 rounded-xl shrink-0">
+          <button onclick="switchSector('stock')" id="tab-stock" class="text-xs py-1.5 rounded-lg font-bold bg-[#FAF9F5] dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm transition">증시/매크로</button>
+          <button onclick="switchSector('crypto')" id="tab-crypto" class="text-xs py-1.5 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 transition">가상자산</button>
+          <button onclick="switchSector('realestate')" id="tab-realestate" class="text-xs py-1.5 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 transition">부동산/정비</button>
         </div>
 
-        <div id="news-list-container" class="flex-1 overflow-y-auto space-y-3 pr-1">
+        <div id="news-list-container" class="space-y-3 pr-0.5">
           <!-- JS 동적 렌더링 -->
         </div>
       </div>
     </section>
 
-    <!-- 3. 중앙 영역 (52% - 초안 작성 & AI 첨삭 / Writer & Refiner) -->
-    <section class="w-[52%] bg-[#F4F3EF] dark:bg-[#121417] flex flex-col overflow-y-auto px-8 py-6 space-y-6 select-text">
+    <!-- 3. 중앙 영역 (52% - 초안 작성 & AI 첨삭 / Writer & Refiner) - 상단 밀착(pt-3) -->
+    <section class="w-[52%] bg-[#F4F3EF] dark:bg-[#121417] flex flex-col overflow-y-auto px-8 pt-3 pb-6 space-y-4 select-text">
 
       <!-- 선택 뉴스 참고 박스 -->
-      <div id="selected-news-box" class="bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-5 hidden shadow-sm">
+      <div id="selected-news-box" class="bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 hidden shadow-sm">
         <div class="flex items-start justify-between">
           <div>
             <span id="ref-news-sector" class="text-xs font-bold uppercase px-2.5 py-1 rounded-md bg-indigo-600 text-white">섹터</span>
-            <h3 id="ref-news-title" class="text-base font-bold text-slate-900 dark:text-white mt-2">선택된 뉴스 제목</h3>
+            <h3 id="ref-news-title" class="text-base font-bold text-slate-900 dark:text-white mt-1.5">선택된 뉴스 제목</h3>
           </div>
           <button onclick="clearSelectedNews()" class="text-xs font-semibold text-slate-500 hover:text-rose-600 bg-[#FAF9F5] dark:bg-[#22262B] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">✕ 선택 해제</button>
         </div>
@@ -154,7 +154,7 @@
       </div>
 
       <!-- 제목 & 초안 작성 에디터 카드 -->
-      <div class="bg-[#FAF9F5] dark:bg-[#1A1D21] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col space-y-4">
+      <div class="bg-[#FAF9F5] dark:bg-[#1A1D21] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col space-y-3.5">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2">
             <span class="text-lg">✍️</span>
@@ -173,19 +173,19 @@
           id="draft-title" 
           type="text" 
           placeholder="포스팅 제목 또는 핵심 주제를 입력하세요 (예: 환율 1,380원대 진입과 미국 대형 기술주 실적 점검)"
-          class="w-full bg-transparent border-b-2 border-slate-200 dark:border-slate-700 px-1 py-2.5 text-lg font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-600 transition"
+          class="w-full bg-transparent border-b-2 border-slate-200 dark:border-slate-700 px-1 py-2 text-lg font-bold text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-600 transition"
           oninput="handleDraftInput()"
         />
 
         <textarea 
           id="draft-memo" 
-          rows="6"
+          rows="5"
           placeholder="좌측 뉴스나 증시 지표를 보고 떠오른 개인 아이디어/메모를 편안하게 적어주세요.&#10;(예: 환율이 1,384원까지 올랐지만 나스닥과 S&P500은 견조함. 금리/환율 노이즈보다 빅테크 실적과 수급에 집중해야 할 시점.)"
           class="w-full bg-[#F2F0E8] dark:bg-[#14171A] border border-slate-200 dark:border-slate-700/60 rounded-xl p-4 text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-y transition"
           oninput="handleDraftInput()"
         ></textarea>
 
-        <div class="flex items-center justify-between pt-2">
+        <div class="flex items-center justify-between pt-1">
           <div class="flex items-center space-x-2.5 flex-1 mr-4">
             <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">🏷️ 오늘의 뷰 태그:</span>
             <input 
@@ -208,7 +208,7 @@
       </div>
 
       <!-- 정제 결과 에디터 카드 -->
-      <div class="bg-[#FAF9F5] dark:bg-[#1A1D21] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex-1 flex flex-col space-y-4">
+      <div class="bg-[#FAF9F5] dark:bg-[#1A1D21] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex-1 flex flex-col space-y-3.5">
         <div class="flex items-center justify-between">
           <div class="flex items-center space-x-2.5">
             <span class="text-lg">📝</span>
@@ -219,28 +219,28 @@
 
         <textarea 
           id="refined-output" 
-          rows="12"
+          rows="11"
           placeholder="[✨ AI 3단 서사 첨삭 및 다듬기] 버튼을 누르면 Cloudflare Worker 파이프라인을 거쳐 이곳에 1단(맥락) - 2단(관점) - 3단(시사점) 완결문이 출력됩니다."
-          class="w-full flex-1 bg-[#F2F0E8] dark:bg-[#14171A] border border-slate-200 dark:border-slate-700/60 rounded-xl p-5 text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 resize-y transition"
+          class="w-full flex-1 bg-[#F2F0E8] dark:bg-[#14171A] border border-slate-200 dark:border-slate-700/60 rounded-xl p-4 text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 resize-y transition"
         ></textarea>
 
         <!-- 복사 기능 3종 -->
-        <div class="grid grid-cols-3 gap-3 pt-1">
+        <div class="grid grid-cols-3 gap-3 pt-0.5">
           <button 
             onclick="copyForNaverSmartEditor()" 
-            class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-3 px-4 rounded-xl flex items-center justify-center space-x-2 transition shadow-sm"
+            class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-2.5 px-4 rounded-xl flex items-center justify-center space-x-2 transition shadow-sm"
           >
             <span>🟢 네이버 서식 복사</span>
           </button>
           <button 
             onclick="copyPlainText()" 
-            class="bg-slate-200/70 hover:bg-slate-200 dark:bg-[#22262B] dark:hover:bg-[#2A2F35] text-slate-700 dark:text-slate-200 text-sm font-semibold py-3 px-4 rounded-xl border border-slate-300/60 dark:border-slate-700 flex items-center justify-center space-x-2 transition"
+            class="bg-slate-200/70 hover:bg-slate-200 dark:bg-[#22262B] dark:hover:bg-[#2A2F35] text-slate-700 dark:text-slate-200 text-sm font-semibold py-2.5 px-4 rounded-xl border border-slate-300/60 dark:border-slate-700 flex items-center justify-center space-x-2 transition"
           >
             <span>📄 일반 텍스트 복사</span>
           </button>
           <button 
             onclick="copyThreadsFormat()" 
-            class="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 text-sm font-semibold py-3 px-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 flex items-center justify-center space-x-2 transition"
+            class="bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/70 text-indigo-700 dark:text-indigo-300 text-sm font-semibold py-2.5 px-4 rounded-xl border border-indigo-200 dark:border-indigo-900/60 flex items-center justify-center space-x-2 transition"
           >
             <span>🧵 스레드(Threads) n/N 분할 복사</span>
           </button>
@@ -257,14 +257,14 @@
           <span class="text-xs font-medium text-slate-400">dad_luckyhappy</span>
         </div>
         <p class="text-xs text-slate-500 dark:text-slate-400 mb-3.5 leading-relaxed">
-          본문 직접 이관 없이 과거 작성 글의 핵심 논리와 아이디어만 눈으로 참고합니다.
+          본문 단순 첫줄 대신 작성 시점의 주요 핵심 관점과 분석 논리를 압축해 보여줍니다.
         </p>
 
         <div class="flex space-x-2">
           <input 
             id="archive-search" 
             type="text" 
-            placeholder="과거 키워드 검색 (예: 금리, 아현, 밸류업)"
+            placeholder="과거 키워드 검색 (예: 금리, 봉천, 밸류업)"
             class="flex-1 bg-[#F2F0E8] dark:bg-[#14171A] border border-slate-200 dark:border-slate-700/60 rounded-xl px-3.5 py-2 text-xs text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
             oninput="renderArchiveList()"
           />
@@ -289,7 +289,6 @@
   <script>
     const WORKER_URL = "https://slack-second-brain.dloolb7.workers.dev/";
 
-    // Worker 응답 전에도 화면이 비어 보이지 않도록 기본 샘플 데이터 제공
     let NEWS_DATA = {
       stock: [
         {
@@ -334,19 +333,19 @@
     let DEFAULT_ARCHIVE = [
       {
         id: 'sample_1',
-        date: '2026-08-14',
-        title: '금리와 환율이 튈 때 흔들리지 않는 기준 (하이일드 스프레드 점검)',
-        coreClaim: '명목 환율이나 금리 숫자 자체보다 중요한 것은 신용시장의 스트레스 여부다. 스프레드가 안정적이라면 단기 조정은 매수 기회로 접근한다.',
-        tags: ['#매크로관점', '#환율', '#실질금리'],
-        snapshot: '당시 코스피 2,560 | 환율 1,375원'
+        date: '2026-11-05',
+        title: '공사비 인상... 재개발 조합원인 저 큰일 난 건가요?',
+        coreClaim: '📌 핵심 관점: 공사비 증액은 정비사업의 피할 수 없는 변수다. 단기 노이즈보다 핵심 입지의 세대수 규모와 인허가 단계(관리처분)를 통과했는지 여부가 수익 방어의 핵심 기준이 된다.',
+        tags: ['#재개발관점', '#봉천413', '#공사비증액'],
+        snapshot: 'Supabase DB'
       },
       {
         id: 'sample_2',
-        date: '2026-06-22',
-        title: '서울 핵심지 정비사업 공사비 인상 이슈와 비례율 방어 논리',
-        coreClaim: '공사비 상승은 상수다. 일반분양가를 높게 받을 수 있는 입지와 이미 사업시행인가를 넘긴 구역이 리스크를 이긴다.',
-        tags: ['#정비사업', '#아현', '#봉천'],
-        snapshot: 'Supabase 아카이브'
+        date: '2026-08-14',
+        title: '금리와 환율이 튈 때 흔들리지 않는 기준 (하이일드 스프레드 점검)',
+        coreClaim: '📌 핵심 관점: 환율 숫자 자체보다 중요한 것은 신용시장의 실제 스트레스 여부다. 스프레드가 안정적이라면 단기 변동성은 펀더멘털 양호 종목의 매수 기회로 접근한다.',
+        tags: ['#매크로관점', '#환율', '#실질금리'],
+        snapshot: '코스피 2,560 | 환율 1,375원'
       }
     ];
 
@@ -417,18 +416,46 @@
           switchSector(currentSector);
         }
 
+        // 실시간 증시지표 연동 (Worker가 indices 반환 시 자동으로 DOM 업데이트)
+        if (data.indices) {
+          if (data.indices.kospi) {
+            document.getElementById('idx-kospi-val').textContent = data.indices.kospi.val;
+            document.getElementById('idx-kospi-change').textContent = data.indices.kospi.change;
+          }
+          if (data.indices.kosdaq) {
+            document.getElementById('idx-kosdaq-val').textContent = data.indices.kosdaq.val;
+            document.getElementById('idx-kosdaq-change').textContent = data.indices.kosdaq.change;
+          }
+          if (data.indices.sp500) {
+            document.getElementById('idx-sp500-val').textContent = data.indices.sp500.val;
+            document.getElementById('idx-sp500-change').textContent = data.indices.sp500.change;
+          }
+          if (data.indices.nasdaq) {
+            document.getElementById('idx-nasdaq-val').textContent = data.indices.nasdaq.val;
+            document.getElementById('idx-nasdaq-change').textContent = data.indices.nasdaq.change;
+          }
+          if (data.indices.usdkrw) {
+            document.getElementById('idx-usdkrw-val').textContent = data.indices.usdkrw.val;
+            document.getElementById('idx-usdkrw-change').textContent = data.indices.usdkrw.change;
+          }
+        }
+
+        // 과거 글 본문 첫 머리가 아닌 핵심 요약/관점(summary 또는 core_insight)을 우선 표시
         if (data.archives && Array.isArray(data.archives) && data.archives.length > 0) {
-          DEFAULT_ARCHIVE = data.archives.map(item => ({
-            id: item.id,
-            date: new Date(item.created_at).toISOString().slice(0, 10),
-            title: item.title,
-            coreClaim: (item.content_final || '').slice(0, 160) + '...',
-            tags: ['#블로그아카이브'],
-            snapshot: 'Supabase DB'
-          }));
+          DEFAULT_ARCHIVE = data.archives.map(item => {
+            const insightSummary = item.summary || item.core_insight || item.key_perspective || (item.content_final ? item.content_final.slice(0, 140) + '...' : '관점 요약 없음');
+            return {
+              id: item.id,
+              date: new Date(item.created_at).toISOString().slice(0, 10),
+              title: item.title,
+              coreClaim: insightSummary.startsWith('📌') ? insightSummary : `📌 핵심 관점: ${insightSummary}`,
+              tags: item.tags || ['#블로그아카이브'],
+              snapshot: 'Supabase DB'
+            };
+          });
           renderArchiveList();
         }
-        showToast('✅ Supabase 실시간 데이터 동기화 완료!');
+        showToast('✅ Supabase 및 실시간 데이터 동기화 완료!');
       } catch (err) {
         console.warn('초기 데이터 로딩 참고 (샘플 데이터 유지):', err);
       }
@@ -473,8 +500,8 @@
         const btn = document.getElementById(`tab-${s}`);
         if (btn) {
           btn.className = s === sector 
-            ? 'text-xs py-2 rounded-lg font-bold bg-[#FAF9F5] dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm transition' 
-            : 'text-xs py-2 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition';
+            ? 'text-xs py-1.5 rounded-lg font-bold bg-[#FAF9F5] dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm transition' 
+            : 'text-xs py-1.5 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition';
         }
       });
 
