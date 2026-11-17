@@ -206,6 +206,15 @@
           class="w-full flex-1 bg-[#F2F0E8] dark:bg-[#14171A] border border-slate-200 dark:border-slate-700/60 rounded-xl p-4 text-[15px] text-slate-800 dark:text-slate-100 placeholder-slate-400 leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 resize-y transition"
         ></textarea>
 
+        <!-- 첨삭 (review) -->
+        <div class="flex items-center justify-between gap-3">
+          <span id="review-summary" class="text-xs text-slate-500 dark:text-slate-400">본문을 직접 다듬은 뒤 첨삭을 받아 보세요. 논리·구조 / 내 문체 / 가독성을 봅니다.</span>
+          <button id="btn-review" onclick="runReview()" class="shrink-0 bg-slate-800 hover:bg-slate-700 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white text-sm font-bold px-4 py-2 rounded-xl transition shadow-sm">
+            🔍 첨삭 받기
+          </button>
+        </div>
+        <div id="review-panel" class="hidden space-y-3"></div>
+
         <div class="grid grid-cols-3 gap-3 pt-0.5">
           <button onclick="copyPlainText()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-2.5 px-4 rounded-xl flex items-center justify-center space-x-2 transition shadow-sm">
             <span>🟢 네이버 서식 복사</span>
@@ -639,6 +648,8 @@
     }
     function handleBodyInput() {
       updateBodyCount();
+      // 본문이 바뀌면 첨삭 카드의 "위치를 찾을 수 없음" 상태를 갱신
+      if (reviewState) { clearTimeout(window.__reviewRerender); window.__reviewRerender = setTimeout(renderReview, 300); }
       clearTimeout(bodySaveTimer);
       bodySaveTimer = setTimeout(() => {
         localStorage.setItem('dad_studio_body', document.getElementById('refined-output').value);
@@ -710,6 +721,11 @@
         if (data.draft) {
           output.value = data.draft.trim();
           lastGeneratedBody = output.value;
+          // 새 글이 생성되면 이전 첨삭 결과는 초기화
+          reviewState = null;
+          reviewAcceptedChars = 0;
+          renderReview();
+          document.getElementById('review-summary').textContent = '본문을 직접 다듬은 뒤 첨삭을 받아 보세요. 논리·구조 / 내 문체 / 가독성을 봅니다.';
           handleBodyInput();
           renderDraftMeta(data.meta);
           if (engineBadge) engineBadge.textContent = '생성 완료';
@@ -744,6 +760,153 @@
       } catch (e) {
         showToast('⚠️ 클립보드 복사에 실패했습니다.');
       }
+    }
+
+    // ---------- 첨삭 (review) ----------
+    const REVIEW_CATEGORY = {
+      logic:       { label: '논리', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300' },
+      structure:   { label: '구조', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' },
+      style:       { label: '문체', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300' },
+      readability: { label: '가독성', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' }
+    };
+    const SEVERITY_LABEL = { high: '중요', medium: '보통', low: '사소' };
+    const STATUS_ICON = { ok: '✅', weak: '⚠️', missing: '❌' };
+    let reviewState = null;      // { structure, comments, style, decisions: {id: 'accepted'|'dismissed'} }
+    let reviewAcceptedChars = 0; // 첨삭 수락으로 바뀐 글자 수
+
+    async function runReview() {
+      const output = document.getElementById('refined-output');
+      const body = output.value;
+      if (body.trim().length < 50) {
+        showToast('⚠️ 첨삭할 본문을 50자 이상 작성해 주세요.');
+        return;
+      }
+      const btn = document.getElementById('btn-review');
+      btn.disabled = true;
+      btn.style.opacity = '0.7';
+      btn.textContent = '첨삭 중...';
+      try {
+        const response = await fetch(WORKER_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'review',
+            title: document.getElementById('draft-title').value.trim(),
+            memo: document.getElementById('draft-memo').value.trim(),
+            body
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP 에러 ${response.status}`);
+        reviewState = { ...data, decisions: {} };
+        renderReview();
+        showToast(`🔍 첨삭 완료: 코멘트 ${data.comments.length}개`);
+      } catch (err) {
+        console.error('Review Error:', err);
+        showToast(`⚠️ 첨삭 실패: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.textContent = '🔍 첨삭 받기';
+      }
+    }
+
+    function renderReview() {
+      const panel = document.getElementById('review-panel');
+      if (!reviewState) { panel.classList.add('hidden'); panel.innerHTML = ''; return; }
+      const body = document.getElementById('refined-output').value;
+      const { structure, comments, style, decisions } = reviewState;
+
+      const structureHtml = [['intro', '도입'], ['body', '근거'], ['insight', '관점']].map(([k, label]) => {
+        const s = structure[k] || {};
+        return `<div class="flex-1 min-w-0 bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200 dark:border-slate-700/60 rounded-xl p-2.5">
+          <div class="text-xs font-bold text-slate-700 dark:text-slate-200">${STATUS_ICON[s.status] || '⚠️'} ${label}</div>
+          <div class="text-[11px] text-slate-500 dark:text-slate-400 leading-snug mt-1">${escapeHtml(s.comment || '')}</div>
+        </div>`;
+      }).join('');
+
+      const styleHtml = (style.notes || []).length
+        ? `<div class="text-xs bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/60 rounded-xl px-3 py-2 space-y-0.5">
+            <div class="font-bold text-indigo-700 dark:text-indigo-300">📏 내 글 기준선과 비교 (자동 측정)</div>
+            ${style.notes.map(n => `<div class="text-slate-600 dark:text-slate-300">· ${escapeHtml(n)}</div>`).join('')}
+          </div>`
+        : `<div class="text-xs text-slate-500 dark:text-slate-400">📏 길이·줄 길이·어미·이모지가 평소 글 기준선 안에 있습니다.</div>`;
+
+      const open = comments.filter(c => !decisions[c.id]);
+      const cardsHtml = comments.map(c => {
+        const cat = REVIEW_CATEGORY[c.category] || REVIEW_CATEGORY.readability;
+        const decided = decisions[c.id];
+        const stale = !decided && !body.includes(c.target);
+        const dim = decided || stale ? 'opacity-50' : '';
+        const actions = decided
+          ? `<span class="text-[11px] font-semibold text-slate-500">${decided === 'accepted' ? '✔ 수락함' : '무시함'}</span>`
+          : stale
+            ? `<span class="text-[11px] font-semibold text-slate-500">본문이 바뀌어 위치를 찾을 수 없음</span>`
+            : `<button onclick="locateReviewTarget('${c.id}')" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">위치 보기</button>
+               ${c.suggestion ? `<button onclick="acceptReview('${c.id}')" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">수락</button>` : ''}
+               <button onclick="dismissReview('${c.id}')" class="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">무시</button>`;
+        return `<div class="bg-[#FAF9F5] dark:bg-[#1A1D21] border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 space-y-2 ${dim}">
+          <div class="flex items-center gap-2">
+            <span class="text-[11px] font-bold px-2 py-0.5 rounded-md ${cat.cls}">${cat.label}</span>
+            <span class="text-[11px] font-medium text-slate-400">${SEVERITY_LABEL[c.severity] || ''}</span>
+          </div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 border-l-4 border-slate-300 dark:border-slate-600 pl-2 whitespace-pre-line line-clamp-3">${escapeHtml(c.target)}</div>
+          <div class="text-sm text-slate-800 dark:text-slate-100 leading-relaxed">${escapeHtml(c.comment)}</div>
+          ${c.suggestion ? `<div class="text-xs text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-2 whitespace-pre-line"><b>수정안</b>\n${escapeHtml(c.suggestion)}</div>` : ''}
+          <div class="flex items-center gap-1.5 justify-end">${actions}</div>
+        </div>`;
+      }).join('');
+
+      const pct = body.length ? Math.round(reviewAcceptedChars / body.length * 100) : 0;
+      panel.innerHTML = `
+        <div class="flex gap-2">${structureHtml}</div>
+        ${styleHtml}
+        <div class="text-xs text-slate-500 dark:text-slate-400">코멘트 ${comments.length}개 · 남은 것 ${open.length}개 · 첨삭 수락으로 바뀐 글자 ${reviewAcceptedChars.toLocaleString()}자 (${pct}%)</div>
+        ${cardsHtml || '<div class="text-xs text-slate-500">지적할 문장이 없습니다.</div>'}
+      `;
+      panel.classList.remove('hidden');
+      document.getElementById('review-summary').textContent =
+        `첨삭 결과: 코멘트 ${comments.length}개 중 ${open.length}개 남음`;
+    }
+
+    function findReviewComment(id) {
+      return reviewState && reviewState.comments.find(c => c.id === id);
+    }
+
+    function locateReviewTarget(id) {
+      const c = findReviewComment(id);
+      const output = document.getElementById('refined-output');
+      const idx = c ? output.value.indexOf(c.target) : -1;
+      if (idx < 0) { showToast('⚠️ 본문에서 해당 문장을 찾을 수 없습니다.'); renderReview(); return; }
+      output.focus();
+      output.setSelectionRange(idx, idx + c.target.length);
+      // 선택 위치까지 스크롤 (줄 수 비율로 근사)
+      const before = output.value.slice(0, idx).split('\n').length;
+      const total = output.value.split('\n').length;
+      output.scrollTop = Math.max(0, (before / total) * output.scrollHeight - output.clientHeight / 3);
+      output.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    function acceptReview(id) {
+      const c = findReviewComment(id);
+      const output = document.getElementById('refined-output');
+      if (!c || !c.suggestion) return;
+      const idx = output.value.indexOf(c.target);
+      if (idx < 0) { showToast('⚠️ 본문이 바뀌어 수정안을 적용할 수 없습니다.'); renderReview(); return; }
+      output.value = output.value.slice(0, idx) + c.suggestion + output.value.slice(idx + c.target.length);
+      reviewAcceptedChars += c.suggestion.length;
+      reviewState.decisions[id] = 'accepted';
+      handleBodyInput();
+      renderReview();
+      output.focus();
+      output.setSelectionRange(idx, idx + c.suggestion.length);
+      showToast('✔ 수정안을 반영했습니다. 마음에 안 들면 Ctrl+Z 대신 직접 고쳐 주세요.');
+    }
+
+    function dismissReview(id) {
+      if (!reviewState) return;
+      reviewState.decisions[id] = 'dismissed';
+      renderReview();
     }
 
     function showToast(msg) {

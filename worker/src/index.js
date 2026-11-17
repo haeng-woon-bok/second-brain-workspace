@@ -4,6 +4,7 @@
 
 import { supabaseHeaders, searchPastInsights, generateText } from './lib.js';
 import { handleWebDraft } from './draft.js';
+import { handleReview } from './review.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
@@ -86,6 +87,15 @@ export default {
     if (body.type === 'web_draft') {
       try {
         const { status, json } = await handleWebDraft(body, env);
+        return jsonResponse(json, status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 502);
+      }
+    }
+
+    if (body.type === 'review') {
+      try {
+        const { status, json } = await handleReview(body, env);
         return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
