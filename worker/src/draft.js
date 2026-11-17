@@ -1,0 +1,241 @@
+// web_draft: 사용자의 자유 초안 → "내 블로그 스타일" 글 + 해시태그
+// 설계: docs/REVIEW_DESIGN.md 4.1
+//
+// 원칙
+//  - 내용은 초안(+선택 뉴스)에서만. 빈 곳은 [✍️ 보충 필요: ...] 자리표시
+//  - 형식은 내 과거 글 74편 기준선 + 유사 글 2편 문체 샘플
+//  - 문단마다 origin(draft/bridge) 표시 → AI 추가 비율 계산
+
+import { searchPastInsights, generateJson, normalize } from './lib.js';
+
+const STYLE_BASELINE = `
+- 어미: 평서형 "~다."(약 53%)와 "~습니다."(약 37%)를 섞어 씀. 해요체("~요")와 반말은 쓰지 않음. 단, 도입에서 "~했는데요."는 자주 씀
+- 줄: 한 줄은 평균 35자 정도로 짧게. 한 문장이 길면 의미 단위로 줄바꿈. 문단 사이에는 빈 줄
+- 도입: "저는 ~했는데요." / "이전 글에서 ~" 처럼 필자의 개인 맥락으로 시작
+- 연결 글: 관련된 과거 글이 있으면 "이전글 :" 또는 "관련글 :" 뒤에 제목과 링크를 붙임
+- 관점: "개인적으로", "제 생각에는" 으로 필자의 관점을 분명히 밝힘
+- 마무리: "여러분"에게 말을 건네며 끝냄 (질문이나 당부)
+- 이모지, 마크다운 기호(#, **, -, >)는 본문에 쓰지 않음
+- 필자: 두 아이(행운이, 행복이)를 둔 가장, 재개발·재테크·AI를 공부하며 기록하는 블로거`;
+
+const SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    title: { type: 'STRING' },
+    paragraphs: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          section: { type: 'STRING', enum: ['intro', 'body', 'insight', 'outro'] },
+          text: { type: 'STRING' },
+          origin: { type: 'STRING', enum: ['draft', 'bridge'] },
+          draft_quote: { type: 'STRING' }
+        },
+        required: ['section', 'text', 'origin']
+      }
+    },
+    related_posts: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          label: { type: 'STRING', enum: ['이전글', '관련글'] },
+          ref: { type: 'STRING' },
+          after_paragraph: { type: 'INTEGER' }
+        },
+        required: ['label', 'ref', 'after_paragraph']
+      }
+    },
+    gaps: { type: 'ARRAY', items: { type: 'STRING' } },
+    hashtags: { type: 'ARRAY', items: { type: 'STRING' } }
+  },
+  required: ['title', 'paragraphs', 'hashtags']
+};
+
+const GAP_MARK = '[✍️ 보충 필요';
+
+// 요청 정규화: 신규(title/memo/tags/news) + 구형(prompt 문자열) 모두 지원
+export function readDraftRequest(body) {
+  if (typeof body.memo === 'string' || typeof body.title === 'string') {
+    const news = body.news && typeof body.news === 'object' ? body.news : null;
+    return {
+      title: String(body.title || '').trim(),
+      memo: String(body.memo || '').trim(),
+      tags: String(body.tags || '').trim(),
+      news: news && news.title ? {
+        title: String(news.title || ''), summary: String(news.summary || ''), link: String(news.link || '')
+      } : null
+    };
+  }
+  // 구형: "[참고 뉴스]: ...\n[제목]: ...\n[초안]: ..."
+  const p = String(body.prompt || '');
+  const pick = (label) => (p.match(new RegExp(`\\[${label}\\]:\\s*([\\s\\S]*?)(?=\\n\\[[^\\]]+\\]:|$)`)) || [])[1]?.trim() || '';
+  const newsTitle = pick('참고 뉴스');
+  return {
+    title: pick('제목'),
+    memo: pick('초안') || p,
+    tags: '',
+    news: newsTitle && newsTitle !== '없음' ? { title: newsTitle, summary: pick('참고 뉴스 요약'), link: '' } : null
+  };
+}
+
+function buildPrompt(req, styleSamples, candidates, maxChars) {
+  const samples = styleSamples.map((s, i) =>
+    `<<문체 샘플 ${i + 1}: ${s.title}>>\n${(s.content_final || '').slice(0, 1200)}`).join('\n\n');
+  const cands = candidates.map((c, i) => `P${i + 1}. ${c.title}`).join('\n') || '(없음)';
+  const news = req.news
+    ? `제목: ${req.news.title}\n요약: ${req.news.summary || '(없음)'}`
+    : '(선택한 뉴스 없음)';
+
+  return `당신은 블로거 "행운복의 재테크"(dad_luckyhappy)의 편집 보조입니다.
+필자가 생각나는 대로 쓴 [초안]을, 필자가 평소 쓰는 블로그 글의 구조와 문체로 정리합니다.
+당신은 글을 새로 쓰는 작가가 아니라, 필자의 생각을 정리하는 편집자입니다.
+
+# 절대 규칙
+1. [초안]과 [참고 뉴스]에 없는 사실, 수치, 날짜, 사례, 고유명사, 경험담을 새로 만들지 마세요.
+2. 논리 전개상 필요한데 초안에 없는 내용은 지어내지 말고, 그 자리에 "[✍️ 보충 필요: 무엇을 쓰면 좋은지]"를 한 줄로 넣으세요. 같은 내용을 gaps 배열에도 넣으세요.
+3. 각 문단의 origin:
+   - "draft": 초안 내용을 다듬은 문단. draft_quote에 근거가 된 초안 원문을 **글자 그대로 복사**해 넣으세요(10~60자).
+   - "bridge": 초안에 없는, 문단 연결이나 형식적인 도입·마무리 문장. 문단당 2문장 이하로 짧게.
+4. 본문 전체 길이는 ${maxChars}자를 넘지 마세요. 초안이 짧으면 글도 짧아야 합니다. 분량을 채우려고 늘리지 마세요.
+5. 초안에 있는 필자의 주장과 결론을 바꾸거나 약하게 만들지 마세요.
+
+# 구조 (필자의 3단 서사)
+- intro: 필자의 개인 맥락으로 시작 (왜 이 글을 쓰게 됐는지)
+- body: 초안의 근거, 경험, 뉴스 내용
+- insight: 필자의 관점과 판단 ("개인적으로 ~")
+- outro: 여러분에게 건네는 한두 줄
+문단 수는 초안 분량에 맞게 3~8개.
+
+# 필자의 문체 기준 (과거 글 74편 분석)
+${STYLE_BASELINE}
+
+# 연결 글 (related_posts)
+아래 후보 중 이 글과 실제로 관련 있는 것만 0~2개 고르고, ref에 번호(예: "P1")를 넣으세요.
+after_paragraph는 그 링크를 넣을 문단 번호(0부터)입니다. 관련 없으면 빈 배열로 두세요.
+${cands}
+
+# 해시태그
+필자가 입력한 뷰 태그(${req.tags || '없음'})를 먼저 포함하고, 본문 핵심 키워드로 채워 **반드시 총 8~12개**.
+hashtags 배열의 원소 하나에 태그 하나씩. "#"으로 시작, 띄어쓰기 없이. 예: ["#금리", "#재개발", "#분담금"]
+
+# 제목
+필자가 입력한 제목이 있으면 그대로 쓰고, 없으면 초안 내용으로 짓되 과장하지 마세요.
+
+# 필자의 실제 글 (문체만 참고. 내용은 가져오지 마세요)
+${samples || '(샘플 없음)'}
+
+# [참고 뉴스]
+${news}
+
+# [필자가 입력한 제목]
+${req.title || '(없음)'}
+
+# [초안]
+${req.memo}`;
+}
+
+// 모델이 ["#a','#b"] 처럼 한 문자열에 여러 태그를 넣는 경우가 있어 토큰 단위로 다시 분리
+// - 사용자 입력: 공백/쉼표가 태그 구분자 ("#금리 재개발" → 2개)
+// - 모델 출력: 원소 안의 쉼표·따옴표·'#'이 구분자, 공백은 태그 내부 띄어쓰기로 보고 제거 ("# 조합원 이야기" → #조합원이야기)
+export function cleanHashtags(list, userTags) {
+  const fromUser = String(userTags || '').split(/[\s,]+/);
+  const fromModel = (Array.isArray(list) ? list : [list])
+    .flatMap(t => String(t ?? '').split(/[,'"`\[\]()]+|(?=#)/));
+  const all = [...fromUser, ...fromModel]
+    .map(t => '#' + t.replace(/[#\s]+/g, ''))
+    .filter(t => t.length > 1);
+  return [...new Set(all)].slice(0, 12);
+}
+
+// 필자 글처럼 한 문장씩 줄바꿈 (평균 줄 길이 35자 기준선)
+export function breakSentences(text) {
+  return String(text)
+    .split('\n')
+    .map(line => line.replace(/([.?!])\s+(?=\S)/g, '$1\n'))
+    .join('\n');
+}
+
+// 생성 결과 검증 + 최종 텍스트 조립
+export function assembleDraft(req, out, candidates) {
+  const sources = normalize([req.memo, req.news?.title, req.news?.summary].filter(Boolean).join(' '));
+
+  const paragraphs = (Array.isArray(out.paragraphs) ? out.paragraphs : [])
+    .filter(p => p && typeof p.text === 'string' && p.text.trim())
+    .map(p => {
+      let origin = p.origin === 'draft' ? 'draft' : 'bridge';
+      const quote = normalize(p.draft_quote);
+      // 인용이 초안에 실제로 없으면 AI 추가분으로 재분류
+      if (origin === 'draft' && (quote.length < 4 || !sources.includes(quote))) origin = 'bridge';
+      return { section: p.section || 'body', text: breakSentences(p.text.trim()), origin };
+    });
+
+  // 연결 글: RAG 후보 안의 것만 허용 (지어낸 링크 차단)
+  const related = [];
+  for (const r of (Array.isArray(out.related_posts) ? out.related_posts : [])) {
+    const idx = parseInt(String(r.ref || '').replace(/\D/g, ''), 10) - 1;
+    const c = candidates[idx];
+    if (!c || !c.source_url || related.some(x => x.url === c.source_url)) continue;
+    const after = Math.min(Math.max(parseInt(r.after_paragraph, 10) || 0, 0), Math.max(paragraphs.length - 1, 0));
+    related.push({ label: r.label === '이전글' ? '이전글' : '관련글', title: c.title, url: c.source_url, after_paragraph: after });
+    if (related.length >= 2) break;
+  }
+
+  const hashtags = cleanHashtags(out.hashtags, req.tags);
+  const title = req.title || String(out.title || '').trim();
+
+  const blocks = [];
+  paragraphs.forEach((p, i) => {
+    blocks.push(p.text);
+    related.filter(r => r.after_paragraph === i)
+      .forEach(r => blocks.push(`${r.label} :\n${r.title}\n${r.url}`));
+  });
+
+  const bodyText = blocks.join('\n\n');
+  const draft = [title, bodyText, hashtags.join(' ')].filter(Boolean).join('\n\n');
+
+  const totalChars = paragraphs.reduce((n, p) => n + p.text.length, 0) || 1;
+  const bridgeChars = paragraphs.filter(p => p.origin === 'bridge').reduce((n, p) => n + p.text.length, 0);
+  const gapCount = (draft.match(/\[✍️ 보충 필요/g) || []).length;
+
+  return {
+    draft,
+    meta: {
+      ai_ratio: Math.round((bridgeChars / totalChars) * 100) / 100,
+      gap_count: gapCount,
+      gaps: (Array.isArray(out.gaps) ? out.gaps : [])
+        .map(g => String(g).replace(/^\s*\[?✍️?\s*보충 필요\s*:\s*/, '').replace(/\]\s*$/, '').trim())
+        .filter(Boolean).slice(0, 8),
+      hashtags,
+      related_posts: related,
+      paragraphs: paragraphs.map(p => ({ section: p.section, origin: p.origin, chars: p.text.length })),
+      body_chars: bodyText.length,
+      memo_chars: req.memo.length
+    }
+  };
+}
+
+export async function handleWebDraft(body, env) {
+  const req = readDraftRequest(body);
+  if (!req.memo) {
+    return { status: 400, json: { error: '초안 메모가 비어 있습니다.' } };
+  }
+
+  const query = [req.title, req.memo, req.news?.title].filter(Boolean).join('\n');
+  let past = [];
+  try {
+    past = await searchPastInsights(query, 4, env);
+  } catch (e) {}
+
+  const styleSamples = past.slice(0, 2);
+  const candidates = past.filter(p => p.source_url);
+  const maxChars = Math.min(4200, Math.max(400, Math.round(req.memo.length * 2.5)));
+
+  const out = await generateJson(buildPrompt(req, styleSamples, candidates, maxChars), SCHEMA, env);
+  const result = assembleDraft(req, out, candidates);
+  result.meta.max_chars = maxChars;
+  return { status: 200, json: result };
+}
+
+export { GAP_MARK };

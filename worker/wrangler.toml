@@ -11,3 +11,12 @@ compatibility_date = "2026-11-03"
 
 # 대시보드에서 일반 변수(Plain text)로 등록한 값이 배포 시 지워지지 않도록 유지
 keep_vars = true
+
+# 버전 미리보기 URL 허용 (versions upload --preview-alias 로 배포 전 테스트)
+preview_urls = true
+
+# AI 요청(web_draft/review/research) 남용 방지: IP당 60초에 10회
+[[ratelimits]]
+name = "AI_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }

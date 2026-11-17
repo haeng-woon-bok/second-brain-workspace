@@ -1,10 +1,16 @@
 // Cloudflare Worker: slack-second-brain
 // 필요한 환경 변수: SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY, SLACK_BOT_TOKEN
+// 바인딩: AI_LIMITER (Rate Limiting, wrangler.toml)
 
-const GEMINI_MODEL = 'gemini-3.8-flash';
+import { supabaseHeaders, searchPastInsights, generateText } from './lib.js';
+import { handleWebDraft } from './draft.js';
+
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
 const ARCHIVE_LIMIT = 200;
+
+// Gemini를 호출하는 웹 요청 타입 (Rate Limiting 대상)
+const AI_TYPES = new Set(['web_draft', 'review', 'research']);
 
 export default {
   async fetch(request, env, ctx) {
@@ -36,6 +42,13 @@ export default {
       if (request.headers.get('x-slack-retry-num')) return new Response('OK', { status: 200 });
       ctx.waitUntil(processSlackDraftRequest(body.event.text.replace(/<@[A-Z0-9]+>/g, '').trim(), body.event.channel, body.event.ts, env));
       return new Response('OK', { status: 200 });
+    }
+
+    // Rate Limiting: IP당 분당 10회 (Gemini 호출 요청만)
+    if (AI_TYPES.has(body.type) && env.AI_LIMITER) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+      const { success } = await env.AI_LIMITER.limit({ key: `${body.type}:${ip}` });
+      if (!success) return jsonResponse({ error: '요청이 너무 많습니다. 1분 뒤 다시 시도해 주세요.' }, 429);
     }
 
     if (body.type === 'get_init_data') {
@@ -71,23 +84,9 @@ export default {
     }
 
     if (body.type === 'web_draft') {
-      if (!body.prompt || typeof body.prompt !== 'string') {
-        return jsonResponse({ error: 'prompt가 비어 있습니다.' }, 400);
-      }
-
-      let contextStr = '';
       try {
-        const pastInsights = await searchPastInsights(body.prompt, 3, env);
-        pastInsights.forEach((item, idx) => {
-          contextStr += `\n[과거 참고 글 ${idx + 1}] 제목: ${item.title}\n내용: ${(item.content_final || '').slice(0, 600)}\n`;
-        });
-      } catch (e) {}
-
-      const draftPrompt = `블로그 에디터로서 다음 글을 3단 서사 구조로 완성해 주세요.\n[과거 참고 관점]${contextStr}\n[사용자 초안 및 뉴스]: ${body.prompt}`;
-
-      try {
-        const draft = await generateText(draftPrompt, env);
-        return jsonResponse({ draft });
+        const { status, json } = await handleWebDraft(body, env);
+        return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
       }
@@ -96,63 +95,6 @@ export default {
     return jsonResponse({ error: 'Invalid request' }, 400);
   }
 };
-
-function supabaseHeaders(env) {
-  return { 'apikey': env.SUPABASE_KEY, 'Authorization': `Bearer ${env.SUPABASE_KEY}` };
-}
-
-// 문서는 파이프라인에서 retrieval_document로 임베딩되므로, 검색 질의는 RETRIEVAL_QUERY로 맞춘다.
-async function embedQuery(text, env) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${env.GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'models/gemini-embedding-001',
-        content: { parts: [{ text: text.slice(0, 2000) }] },
-        taskType: 'RETRIEVAL_QUERY',
-        outputDimensionality: 768
-      })
-    }
-  );
-  const data = await res.json();
-  return data.embedding?.values || [];
-}
-
-async function searchPastInsights(text, count, env) {
-  const embedding = await embedQuery(text, env);
-  if (embedding.length === 0) return [];
-  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/match_past_insights`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...supabaseHeaders(env) },
-    body: JSON.stringify({ query_embedding: embedding, match_threshold: 0.1, match_count: count })
-  });
-  const rows = await res.json();
-  return Array.isArray(rows) ? rows : [];
-}
-
-// Gemini 응답이 비었거나(안전 필터 등) 오류면 예외를 던져 호출 측이 원인을 알 수 있게 한다.
-async function generateText(prompt, env) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-    }
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(`Gemini API 오류 (HTTP ${res.status}): ${data.error?.message || '알 수 없음'}`);
-  }
-  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-  if (!text) {
-    const reason = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason || 'EMPTY';
-    throw new Error(`Gemini 응답이 비어 있습니다 (사유: ${reason})`);
-  }
-  return text;
-}
 
 async function processSlackDraftRequest(prompt, channel, threadTs, env) {
   const postToSlack = (text) => fetch('https://slack.com/api/chat.postMessage', {
