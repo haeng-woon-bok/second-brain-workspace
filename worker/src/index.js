@@ -5,6 +5,7 @@
 import { supabaseHeaders, searchPastInsights, generateText } from './lib.js';
 import { handleWebDraft } from './draft.js';
 import { handleReview } from './review.js';
+import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './drafts.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
@@ -18,7 +19,7 @@ export default {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Work-Key',
     };
     const jsonResponse = (obj, status = 200) =>
       new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -96,9 +97,39 @@ export default {
     if (body.type === 'review') {
       try {
         const { status, json } = await handleReview(body, env);
+        // 초안 id가 있고 작업 키가 맞으면 첨삭 결과를 이력으로 저장
+        if (status === 200 && body.draft_id && (await checkWorkKey(request, env)) === 'ok') {
+          try {
+            json.review_id = await saveReview(env, body.draft_id, body.body, json);
+          } catch (e) {
+            json.review_save_error = e.message;
+          }
+        }
         return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
+      }
+    }
+
+    if (DRAFT_TYPES.has(body.type)) {
+      const auth = await checkWorkKey(request, env);
+      if (auth === 'not_configured') {
+        return jsonResponse({ error: '서버에 작업 키(WORK_KEY)가 아직 설정되지 않았습니다.', code: 'work_key_not_configured' }, 503);
+      }
+      if (auth !== 'ok') {
+        // 키 추측 방지: 실패한 시도도 IP당 분당 10회로 제한
+        if (env.AI_LIMITER) {
+          const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+          const { success } = await env.AI_LIMITER.limit({ key: `auth:${ip}` });
+          if (!success) return jsonResponse({ error: '요청이 너무 많습니다. 1분 뒤 다시 시도해 주세요.' }, 429);
+        }
+        return jsonResponse({ error: '작업 키가 올바르지 않습니다.', code: 'work_key_invalid' }, 401);
+      }
+      try {
+        const { status, json } = await handleDraftRequest(body, env);
+        return jsonResponse(json, status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, e.status === 401 || e.status === 403 ? 500 : 502);
       }
     }
 

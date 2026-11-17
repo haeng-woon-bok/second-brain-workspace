@@ -75,8 +75,10 @@ export function computeStyleStats(body) {
   if (avgLine > 45) notes.push(`평균 줄 길이 ${avgLine}자: 평소(${BASELINE.avgLine}자)보다 깁니다. 의미 단위로 줄을 바꿔 보세요.`);
   if (longLines) notes.push(`60자가 넘는 줄 ${longLines}개`);
   const pct = (k) => Math.round(ends[k] / n * 100);
-  if (pct('plainDa') > 10) notes.push(`반말 평서형(~한다/~이다) 문장 ${ends.plainDa}개 (${pct('plainDa')}%): 평소 글은 ${BASELINE.plainDa}%뿐이고 "~습니다"가 기본입니다.`);
-  if (pct('yo') > 30) notes.push(`"~요"로 끝나는 문장 ${pct('yo')}%: 평소(${BASELINE.yo}%, 주로 "~는데요"와 질문)보다 많습니다.`);
+  // 비율 경고는 문장이 충분할 때만 (짧은 글은 1~2문장으로 비율이 크게 튐)
+  const enough = sentences.length >= 12;
+  if (ends.plainDa >= 3 && (pct('plainDa') > 10 || !enough)) notes.push(`반말 평서형(~한다/~이다) 문장 ${ends.plainDa}개 (${pct('plainDa')}%): 평소 글은 ${BASELINE.plainDa}%뿐이고 "~습니다"가 기본입니다.`);
+  if (enough && pct('yo') > 30) notes.push(`"~요"로 끝나는 문장 ${pct('yo')}%: 평소(${BASELINE.yo}%, 주로 "~는데요"와 질문)보다 많습니다.`);
   if (emoji) notes.push(`이모지 ${emoji}개: 평소 글 본문에는 이모지를 쓰지 않습니다.`);
   if (markdown) notes.push(`마크다운 기호 ${markdown}곳: 네이버 블로그에 그대로 보이니 지워 주세요.`);
   if (gaps) notes.push(`아직 채우지 않은 [✍️ 보충 필요] ${gaps}곳`);

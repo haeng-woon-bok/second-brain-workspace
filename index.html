@@ -35,6 +35,10 @@
         <span id="save-status-text">LocalStorage 자동 저장됨</span>
       </div>
 
+      <button onclick="setWorkKey()" id="work-key-btn" title="초안을 서버(DB)에 저장하려면 작업 키가 필요합니다" class="text-xs font-semibold bg-slate-200/70 hover:bg-slate-200 dark:bg-[#22262B] text-slate-700 dark:text-slate-200 px-3.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700/60 transition">
+        🔑 작업 키
+      </button>
+
       <div class="text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 px-3.5 py-1.5 rounded-full border border-indigo-200 dark:border-indigo-900/60">
         ⚡ Cloudflare Worker 연동 모드
       </div>
@@ -121,6 +125,17 @@
 
     <!-- 3. 중앙 영역 (초안 작성 & AI 첨삭) -->
     <section class="w-[52%] bg-[#F4F3EF] dark:bg-[#121417] flex flex-col overflow-y-auto px-8 pt-3 pb-6 space-y-4 select-text">
+
+      <!-- 초안 선택 바 (작업 키가 있을 때 DB 저장) -->
+      <div id="draft-bar" class="flex items-center gap-2 bg-[#FAF9F5] dark:bg-[#1A1D21] border border-slate-200/90 dark:border-slate-800 rounded-2xl px-4 py-2.5 shadow-sm">
+        <span class="text-sm font-bold text-slate-700 dark:text-slate-200 shrink-0">📂 초안</span>
+        <select id="draft-select" onchange="onDraftSelect(this.value)" class="flex-1 min-w-0 bg-[#F2F0E8] dark:bg-[#14171A] border border-slate-200 dark:border-slate-700/60 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500" disabled>
+          <option value="">작업 키를 설정하면 초안 목록이 보입니다</option>
+        </select>
+        <button onclick="newDraft()" class="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200">＋ 새 초안</button>
+        <button onclick="archiveCurrentDraft()" id="btn-archive" class="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400" disabled>보관</button>
+        <span id="db-status" class="shrink-0 text-[11px] text-slate-400 w-28 text-right">DB 저장 꺼짐</span>
+      </div>
 
       <!-- 선택 뉴스 참고 박스 -->
       <div id="selected-news-box" class="bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 hidden shadow-sm">
@@ -288,6 +303,7 @@
       setInterval(updateClock, 1000);
       fetchInitDataFromWorker();
       loadFromLocalStorage();
+      initDraftStore();
     });
 
     // ---------- 문자열 안전 처리 헬퍼 ----------
@@ -532,7 +548,7 @@
       });
     }
 
-    function selectNewsCard(item) {
+    function selectNewsCard(item, silent = false) {
       selectedNews = item;
       switchSector(currentSector);
       document.getElementById('selected-news-box').classList.remove('hidden');
@@ -550,13 +566,17 @@
       if (item.idea) refContent += `\n\n💡 아이디어: ${item.idea}`;
       document.getElementById('ref-news-summary').textContent = refContent;
 
-      showToast(`📌 선택한 뉴스가 참고 박스에 주입되었습니다.`);
+      if (!silent) {
+        showToast(`📌 선택한 뉴스가 참고 박스에 주입되었습니다.`);
+        scheduleDbSave();
+      }
     }
 
     function clearSelectedNews() {
       selectedNews = null;
       document.getElementById('selected-news-box').classList.add('hidden');
       switchSector(currentSector);
+      scheduleDbSave();
     }
 
     function renderArchiveList() {
@@ -617,6 +637,7 @@
       saveTimer = setTimeout(() => {
         localStorage.setItem('dad_studio_draft', JSON.stringify({ title, memo, tags }));
       }, 400);
+      scheduleDbSave();
     }
 
     function loadFromLocalStorage() {
@@ -654,6 +675,7 @@
       bodySaveTimer = setTimeout(() => {
         localStorage.setItem('dad_studio_body', document.getElementById('refined-output').value);
       }, 400);
+      scheduleDbSave();
     }
 
     function renderDraftMeta(meta) {
@@ -726,6 +748,7 @@
           reviewAcceptedChars = 0;
           renderReview();
           document.getElementById('review-summary').textContent = '본문을 직접 다듬은 뒤 첨삭을 받아 보세요. 논리·구조 / 내 문체 / 가독성을 봅니다.';
+          lastAiRatio = typeof data.meta?.ai_ratio === 'number' ? data.meta.ai_ratio : null;
           handleBodyInput();
           renderDraftMeta(data.meta);
           if (engineBadge) engineBadge.textContent = '생성 완료';
@@ -786,18 +809,22 @@
       btn.style.opacity = '0.7';
       btn.textContent = '첨삭 중...';
       try {
+        // DB 저장을 쓰는 중이면 먼저 저장해 초안 id를 확보 (첨삭 이력 연결용)
+        if (getWorkKey()) await flushDbSave();
         const response = await fetch(WORKER_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: workHeaders(),
           body: JSON.stringify({
             type: 'review',
             title: document.getElementById('draft-title').value.trim(),
             memo: document.getElementById('draft-memo').value.trim(),
-            body
+            body,
+            draft_id: currentDraftId || undefined
           })
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || `HTTP 에러 ${response.status}`);
+        if (data.review_save_error) console.warn('첨삭 이력 저장 실패:', data.review_save_error);
         reviewState = { ...data, decisions: {} };
         renderReview();
         showToast(`🔍 첨삭 완료: 코멘트 ${data.comments.length}개`);
@@ -898,6 +925,7 @@
       reviewState.decisions[id] = 'accepted';
       handleBodyInput();
       renderReview();
+      saveReviewDecisions();
       output.focus();
       output.setSelectionRange(idx, idx + c.suggestion.length);
       showToast('✔ 수정안을 반영했습니다. 마음에 안 들면 Ctrl+Z 대신 직접 고쳐 주세요.');
@@ -907,7 +935,297 @@
       if (!reviewState) return;
       reviewState.decisions[id] = 'dismissed';
       renderReview();
+      saveReviewDecisions();
     }
+
+    // ---------- 초안 DB 저장 (작업 키) ----------
+    const LS = { key: 'dad_studio_work_key', id: 'dad_studio_draft_id', ts: 'dad_studio_draft_updated_at' };
+    let currentDraftId = null;
+    let currentUpdatedAt = null;
+    let lastAiRatio = null;
+    let dbSaveTimer = null;
+    let dbSaving = null;          // 진행 중인 저장 Promise
+    let dbDirty = false;
+    let draftList = [];
+
+    function getWorkKey() {
+      try { return localStorage.getItem(LS.key) || ''; } catch (e) { return ''; }
+    }
+    function workHeaders() {
+      const h = { 'Content-Type': 'application/json' };
+      const k = getWorkKey();
+      if (k) h['X-Work-Key'] = k;
+      return h;
+    }
+    function setDbStatus(text, tone = 'muted') {
+      const el = document.getElementById('db-status');
+      el.textContent = text;
+      el.className = `shrink-0 text-[11px] w-28 text-right ${tone === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : tone === 'warn' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`;
+      const head = document.getElementById('save-status-text');
+      const dot = document.getElementById('save-indicator');
+      if (getWorkKey()) {
+        head.textContent = tone === 'warn' ? `DB 저장 오류 (로컬에는 저장됨)` : `DB + 로컬 자동 저장`;
+        dot.className = `w-2.5 h-2.5 rounded-full ${tone === 'warn' ? 'bg-rose-500' : 'bg-emerald-500'}`;
+      } else {
+        head.textContent = 'LocalStorage 자동 저장됨';
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+      }
+    }
+
+    async function draftApi(type, payload = {}) {
+      const res = await fetch(WORKER_URL, { method: 'POST', headers: workHeaders(), body: JSON.stringify({ type, ...payload }) });
+      const data = await res.json().catch(() => ({}));
+      return { status: res.status, data };
+    }
+
+    function setWorkKey() {
+      const current = getWorkKey();
+      const input = prompt(
+        '작업 키를 입력하세요.\n' +
+        '· Cloudflare Worker의 WORK_KEY Secret과 같은 값이어야 합니다.\n' +
+        '· 이 브라우저에만 저장됩니다. 비우고 확인하면 DB 저장을 끕니다.',
+        current ? '(변경하지 않으려면 취소)' : '');
+      if (input === null || input === '(변경하지 않으려면 취소)') return;
+      try {
+        if (input.trim()) localStorage.setItem(LS.key, input.trim());
+        else localStorage.removeItem(LS.key);
+      } catch (e) {}
+      initDraftStore();
+    }
+
+    async function initDraftStore() {
+      try {
+        currentDraftId = Number(localStorage.getItem(LS.id)) || null;
+        currentUpdatedAt = localStorage.getItem(LS.ts) || null;
+      } catch (e) {}
+      const select = document.getElementById('draft-select');
+      const keyBtn = document.getElementById('work-key-btn');
+      if (!getWorkKey()) {
+        select.disabled = true;
+        select.innerHTML = '<option value="">작업 키를 설정하면 초안 목록이 보입니다</option>';
+        document.getElementById('btn-archive').disabled = true;
+        keyBtn.textContent = '🔑 작업 키';
+        setDbStatus('DB 저장 꺼짐');
+        return;
+      }
+      keyBtn.textContent = '🔑 작업 키 ✓';
+      await refreshDraftList();
+      await syncCurrentDraftOnLoad();
+    }
+
+    // 페이지를 열 때: 다른 기기에서 고친 최신본이 있으면 불러오고, 아니면 첨삭 이력만 복원
+    async function syncCurrentDraftOnLoad() {
+      if (!currentDraftId) return;
+      try {
+        const { status, data } = await draftApi('draft_get', { id: currentDraftId });
+        if (status !== 200) return;
+        if (currentUpdatedAt && data.draft.updated_at !== currentUpdatedAt) {
+          applyDraft(data.draft, data.reviews);
+          showToast('🔄 다른 기기에서 수정된 최신 초안을 불러왔습니다.');
+        } else if (data.reviews && data.reviews[0] && !reviewState) {
+          const last = data.reviews[0];
+          reviewState = { ...last.result, review_id: last.id, decisions: last.decisions || {} };
+          renderReview();
+        }
+        setDbStatus('DB 연결됨', 'ok');
+      } catch (e) {
+        console.warn('초안 동기화 실패:', e);
+      }
+    }
+
+    async function refreshDraftList() {
+      const select = document.getElementById('draft-select');
+      try {
+        const { status, data } = await draftApi('drafts_list');
+        if (status === 401) { setDbStatus('작업 키 불일치', 'warn'); showToast('⚠️ 작업 키가 서버와 다릅니다. 🔑 버튼으로 다시 입력해 주세요.'); select.disabled = true; return; }
+        if (status === 503) { setDbStatus('서버 키 미설정', 'warn'); select.disabled = true; select.innerHTML = '<option value="">서버에 WORK_KEY가 아직 없습니다</option>'; return; }
+        if (status !== 200) throw new Error(data.error || `HTTP ${status}`);
+        draftList = data.drafts || [];
+        // 현재 초안이 목록에 없으면(보관됨/삭제됨) 새 초안 상태로
+        if (currentDraftId && !draftList.some(d => d.id === currentDraftId)) setCurrentDraft(null, null);
+        renderDraftSelect();
+        select.disabled = false;
+        document.getElementById('btn-archive').disabled = !currentDraftId;
+        setDbStatus(currentDraftId ? 'DB 연결됨' : '새 초안', 'ok');
+      } catch (e) {
+        setDbStatus('DB 연결 실패', 'warn');
+        console.warn('drafts_list 실패:', e);
+      }
+    }
+
+    function draftLabel(d) {
+      const date = formatKstDate(d.updated_at).slice(5);
+      const st = { writing: '작성중', reviewed: '첨삭함', published: '발행' }[d.status] || d.status;
+      const name = (d.title || d.memo || '(제목 없음)').replace(/\s+/g, ' ').slice(0, 40);
+      return `${date} · ${name} [${st}]`;
+    }
+
+    function renderDraftSelect() {
+      const select = document.getElementById('draft-select');
+      const opts = [`<option value="">${currentDraftId ? '＋ 새 초안으로 전환…' : '✏️ 새 초안 (아직 저장 안 됨)'}</option>`]
+        .concat(draftList.map(d => `<option value="${d.id}" ${d.id === currentDraftId ? 'selected' : ''}>${escapeHtml(draftLabel(d))}</option>`));
+      select.innerHTML = opts.join('');
+      if (!currentDraftId) select.value = '';
+    }
+
+    function setCurrentDraft(id, updatedAt) {
+      currentDraftId = id;
+      currentUpdatedAt = updatedAt;
+      try {
+        if (id) { localStorage.setItem(LS.id, String(id)); localStorage.setItem(LS.ts, updatedAt || ''); }
+        else { localStorage.removeItem(LS.id); localStorage.removeItem(LS.ts); }
+      } catch (e) {}
+      document.getElementById('btn-archive').disabled = !id;
+    }
+
+    function collectDraft() {
+      return {
+        title: document.getElementById('draft-title').value,
+        memo: document.getElementById('draft-memo').value,
+        tags: document.getElementById('draft-tags').value,
+        body: document.getElementById('refined-output').value,
+        news: selectedNews ? { title: selectedNews.title, summary: selectedNews.summary, link: selectedNews.link } : null,
+        ...(lastAiRatio !== null ? { ai_ratio: lastAiRatio } : {})
+      };
+    }
+
+    function scheduleDbSave() {
+      if (!getWorkKey() || suppressDbSave) return;
+      dbDirty = true;
+      setDbStatus('저장 대기…');
+      clearTimeout(dbSaveTimer);
+      dbSaveTimer = setTimeout(() => flushDbSave(), 2500);
+    }
+
+    let suppressDbSave = false;   // 초안 불러오는 동안 저장 트리거 막기
+
+    async function flushDbSave(force = false) {
+      clearTimeout(dbSaveTimer);
+      if (dbSaving) await dbSaving;
+      if (!getWorkKey() || (!dbDirty && !force)) return;
+      const draft = collectDraft();
+      if (!currentDraftId && !draft.memo.trim() && !draft.body.trim() && !draft.title.trim()) { dbDirty = false; setDbStatus('새 초안', 'ok'); return; }
+      dbDirty = false;
+      setDbStatus('저장 중…');
+      dbSaving = (async () => {
+        try {
+          let { status, data } = await draftApi('draft_save', { id: currentDraftId || undefined, base_updated_at: currentUpdatedAt || undefined, draft });
+          if (status === 409) {
+            const overwrite = confirm(
+              '다른 기기(또는 다른 탭)에서 이 초안이 먼저 수정됐습니다.\n\n' +
+              '[확인] 지금 화면의 내용으로 덮어쓰기\n[취소] 서버에 저장된 최신 버전 불러오기');
+            if (overwrite) {
+              ({ status, data } = await draftApi('draft_save', { id: currentDraftId, force: true, draft }));
+            } else {
+              applyDraft(data.draft, []);
+              setDbStatus('최신본 불러옴', 'ok');
+              return;
+            }
+          }
+          if (status !== 200) throw new Error(data.error || `HTTP ${status}`);
+          const isNew = !currentDraftId;
+          setCurrentDraft(data.id, data.updated_at);
+          const t = new Date(data.updated_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+          setDbStatus(`DB 저장됨 ${t}`, 'ok');
+          if (isNew) refreshDraftList();
+          else {
+            const d = draftList.find(x => x.id === data.id);
+            if (d) { d.title = draft.title; d.memo = draft.memo.slice(0, 80); d.updated_at = data.updated_at; renderDraftSelect(); }
+          }
+        } catch (e) {
+          dbDirty = true;
+          setDbStatus('DB 저장 실패', 'warn');
+          console.warn('draft_save 실패:', e);
+        }
+      })();
+      await dbSaving;
+      dbSaving = null;
+    }
+
+    function applyDraft(d, reviews) {
+      suppressDbSave = true;
+      try {
+        document.getElementById('draft-title').value = d.title || '';
+        document.getElementById('draft-memo').value = d.memo || '';
+        document.getElementById('draft-tags').value = d.tags || '';
+        document.getElementById('refined-output').value = d.body || '';
+        handleDraftInput();
+        handleBodyInput();
+        lastGeneratedBody = d.body || '';
+        lastAiRatio = typeof d.ai_ratio === 'number' ? d.ai_ratio : null;
+        renderDraftMeta(null);
+        if (d.news && d.news.title) {
+          selectNewsCard({ id: `saved_${d.id}`, sector: '저장된 뉴스', title: d.news.title, summary: d.news.summary || '', link: d.news.link || '#', idea: '' }, true);
+        } else {
+          selectedNews = null;
+          document.getElementById('selected-news-box').classList.add('hidden');
+          switchSector(currentSector);
+        }
+        // 가장 최근 첨삭 결과 복원
+        const last = (reviews || [])[0];
+        reviewAcceptedChars = 0;
+        reviewState = last ? { ...last.result, review_id: last.id, decisions: last.decisions || {} } : null;
+        renderReview();
+        if (!last) document.getElementById('review-summary').textContent = '본문을 직접 다듬은 뒤 첨삭을 받아 보세요. 논리·구조 / 내 문체 / 가독성을 봅니다.';
+        setCurrentDraft(d.id, d.updated_at);
+        dbDirty = false;
+        clearTimeout(dbSaveTimer);
+      } finally {
+        suppressDbSave = false;
+      }
+    }
+
+    async function onDraftSelect(value) {
+      await flushDbSave();
+      if (!value) { newDraft(true); return; }
+      setDbStatus('불러오는 중…');
+      const { status, data } = await draftApi('draft_get', { id: Number(value) });
+      if (status !== 200) { showToast(`⚠️ 초안을 불러오지 못했습니다: ${data.error || status}`); refreshDraftList(); return; }
+      applyDraft(data.draft, data.reviews);
+      renderDraftSelect();
+      setDbStatus('DB 연결됨', 'ok');
+      showToast('📂 초안을 불러왔습니다.');
+    }
+
+    async function newDraft(skipFlush = false) {
+      if (!skipFlush) await flushDbSave();
+      applyDraft({ id: null, title: '', memo: '', tags: '', body: '', news: null, updated_at: null }, []);
+      setCurrentDraft(null, null);
+      try { localStorage.removeItem('dad_studio_body'); } catch (e) {}
+      renderDraftSelect();
+      setDbStatus(getWorkKey() ? '새 초안' : 'DB 저장 꺼짐', 'ok');
+    }
+
+    async function archiveCurrentDraft() {
+      if (!currentDraftId) return;
+      if (!confirm('이 초안을 보관할까요? 목록에서 사라지지만 DB에는 남아 있습니다.')) return;
+      await flushDbSave();
+      const { status, data } = await draftApi('draft_archive', { id: currentDraftId });
+      if (status !== 200) { showToast(`⚠️ 보관 실패: ${data.error || status}`); return; }
+      showToast('🗄️ 초안을 보관했습니다.');
+      await newDraft(true);
+      refreshDraftList();
+    }
+
+    let decisionTimer = null;
+    function saveReviewDecisions() {
+      if (!getWorkKey() || !reviewState?.review_id) return;
+      clearTimeout(decisionTimer);
+      decisionTimer = setTimeout(() => {
+        draftApi('review_decision', { review_id: reviewState.review_id, decisions: reviewState.decisions })
+          .catch(e => console.warn('review_decision 실패:', e));
+      }, 800);
+    }
+
+    // 탭을 닫기 전에 남은 저장 시도
+    window.addEventListener('beforeunload', () => {
+      if (dbDirty && getWorkKey()) {
+        try {
+          fetch(WORKER_URL, { method: 'POST', headers: workHeaders(), keepalive: true,
+            body: JSON.stringify({ type: 'draft_save', id: currentDraftId || undefined, base_updated_at: currentUpdatedAt || undefined, draft: collectDraft() }) });
+        } catch (e) {}
+      }
+    });
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
