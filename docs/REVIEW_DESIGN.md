@@ -1,6 +1,17 @@
 # AI 글 다듬기 & 첨삭 기능 설계 (v0.2)
 
-> 작성일: 2026-11-17 · 상태: **결정 반영 완료, 구현 대기**
+> 작성일: 2026-11-17 · 상태: **1~4단계 구현·배포 완료 (2026-11-18)**
+>
+> | 단계 | 상태 | 비고 |
+> |---|---|---|
+> | 1. web_draft 교체 + Rate Limiting | ✅ 배포 | `worker/src/draft.js` |
+> | 2. review 첨삭 | ✅ 배포 | `worker/src/review.js` |
+> | 3. 초안 DB 저장 (작업 키) | ✅ 배포 · ⏳ `WORK_KEY` Secret 설정 필요 | `worker/src/drafts.js`, SQL 002 |
+> | 4. 문체 기준선 자동 계산 + Slack 봇 | ✅ 배포 | `worker/src/style.js`, SQL 003. **파이프라인이 아니라 Worker가 계산**(아래 참고) |
+>
+> 4단계 설계 변경: 파이프라인의 Supabase 키 권한을 확인할 수 없어(새 테이블은 service_role에만 GRANT),
+> service_role로 확인된 Worker가 `my_insights` 전체를 읽어 24시간마다 `style_profile`에 한 행씩 저장합니다.
+> 파이프라인(daily_briefing_pipeline.py)은 변경하지 않았습니다.
 > 관련: [ARCHITECTURE.md](ARCHITECTURE.md) 8절 "설계 의도와의 간극"
 
 ---

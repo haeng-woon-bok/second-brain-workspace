@@ -2,7 +2,7 @@
 // 필요한 환경 변수: SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY, SLACK_BOT_TOKEN
 // 바인딩: AI_LIMITER (Rate Limiting, wrangler.toml)
 
-import { supabaseHeaders, searchPastInsights, generateText } from './lib.js';
+import { supabaseHeaders } from './lib.js';
 import { handleWebDraft } from './draft.js';
 import { handleReview } from './review.js';
 import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './drafts.js';
@@ -42,7 +42,7 @@ export default {
 
     if (body.event && body.event.type === 'app_mention') {
       if (request.headers.get('x-slack-retry-num')) return new Response('OK', { status: 200 });
-      ctx.waitUntil(processSlackDraftRequest(body.event.text.replace(/<@[A-Z0-9]+>/g, '').trim(), body.event.channel, body.event.ts, env));
+      ctx.waitUntil(processSlackDraftRequest(body.event.text.replace(/<@[A-Z0-9]+>/g, '').trim(), body.event.channel, body.event.ts, env, ctx));
       return new Response('OK', { status: 200 });
     }
 
@@ -87,7 +87,7 @@ export default {
 
     if (body.type === 'web_draft') {
       try {
-        const { status, json } = await handleWebDraft(body, env);
+        const { status, json } = await handleWebDraft(body, env, ctx);
         return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
@@ -96,7 +96,7 @@ export default {
 
     if (body.type === 'review') {
       try {
-        const { status, json } = await handleReview(body, env);
+        const { status, json } = await handleReview(body, env, ctx);
         // 초안 id가 있고 작업 키가 맞으면 첨삭 결과를 이력으로 저장
         if (status === 200 && body.draft_id && (await checkWorkKey(request, env)) === 'ok') {
           try {
@@ -137,24 +137,37 @@ export default {
   }
 };
 
-async function processSlackDraftRequest(prompt, channel, threadTs, env) {
+const STUDIO_URL = 'https://haeng-woon-bok.github.io/second-brain-workspace/';
+// waitUntil은 응답 후 약 30초까지만 보장되므로 Gemini 호출은 22초에서 끊는다
+const SLACK_GEMINI_TIMEOUT_MS = 22000;
+
+// Slack 멘션도 웹 ✨ 버튼과 같은 로직(내 초안 기반 + 내 문체)으로 정리
+export function formatSlackDraft(result) {
+  const m = result.meta || {};
+  const pct = Math.round((m.ai_ratio || 0) * 100);
+  const head = `📝 *내 문체로 정리한 초안* · AI가 덧붙인 문장 ${pct}%` + (m.gap_count ? ` · ✍️ 보충 필요 ${m.gap_count}곳` : '');
+  const gaps = (m.gaps || []).length ? `\n\n*보충할 곳*\n${m.gaps.map(g => `• ${g}`).join('\n')}` : '';
+  const foot = `\n\n_첨삭까지 이어서 하려면 웹 스튜디오에 붙여 넣으세요: ${STUDIO_URL}_`;
+  return `${head}\n\n${result.draft}${gaps}${foot}`;
+}
+
+async function processSlackDraftRequest(prompt, channel, threadTs, env, ctx) {
   const postToSlack = (text) => fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.SLACK_BOT_TOKEN}` },
     body: JSON.stringify({ channel, thread_ts: threadTs, text })
   });
 
-  try {
-    let contextStr = '';
-    const pastInsights = await searchPastInsights(prompt, 3, env);
-    pastInsights.forEach((item, idx) => {
-      contextStr += `\n--- [과거 참고 글 ${idx + 1}] ---\n제목: ${item.title}\n내용: ${(item.content_final || '').slice(0, 800)}\n`;
-    });
+  if (!prompt) {
+    await postToSlack('✍️ 사용법: `@봇 생각나는 대로 쓴 초안` 을 보내면 내 블로그 문체로 정리해 드립니다. 초안에 없는 내용은 지어내지 않고 [✍️ 보충 필요]로 표시합니다.');
+    return;
+  }
 
-    const draftPrompt = `블로그 에디터로서 다음 초안을 다듬어주세요.\n[과거 참고자료]${contextStr}\n[사용자 초안]${prompt}`;
-    const generatedDraft = await generateText(draftPrompt, env);
-    await postToSlack(`📝 *요청하신 글감 초안:*\n\n${generatedDraft}`);
+  try {
+    const { status, json } = await handleWebDraft({ memo: prompt }, env, ctx, { timeoutMs: SLACK_GEMINI_TIMEOUT_MS });
+    if (status !== 200) throw new Error(json.error || `HTTP ${status}`);
+    await postToSlack(formatSlackDraft(json));
   } catch (err) {
-    await postToSlack(`⚠️ 오류 발생: ${err.message}`);
+    await postToSlack(`⚠️ 초안 정리 실패: ${err.message}\n긴 초안은 웹 스튜디오에서 시도해 주세요: ${STUDIO_URL}`);
   }
 }

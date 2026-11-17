@@ -854,7 +854,7 @@
 
       const styleHtml = (style.notes || []).length
         ? `<div class="text-xs bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/60 rounded-xl px-3 py-2 space-y-0.5">
-            <div class="font-bold text-indigo-700 dark:text-indigo-300">📏 내 글 기준선과 비교 (자동 측정)</div>
+            <div class="font-bold text-indigo-700 dark:text-indigo-300">📏 내 글 기준선과 비교 (자동 측정${reviewState.baseline_source ? ` · ${escapeHtml(reviewState.baseline_source)}` : ''})</div>
             ${style.notes.map(n => `<div class="text-slate-600 dark:text-slate-300">· ${escapeHtml(n)}</div>`).join('')}
           </div>`
         : `<div class="text-xs text-slate-500 dark:text-slate-400">📏 길이·줄 길이·어미·이모지가 평소 글 기준선 안에 있습니다.</div>`;

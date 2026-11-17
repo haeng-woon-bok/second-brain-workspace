@@ -7,17 +7,7 @@
 //  - 문단마다 origin(draft/bridge) 표시 → AI 추가 비율 계산
 
 import { searchPastInsights, generateJson, normalize } from './lib.js';
-
-const STYLE_BASELINE = `
-- 어미: 합쇼체 "~습니다/~ㅂ니다."가 기본(문장의 약 50%). 도입·전환에서는 "~했는데요./~인데요."(약 8%), 독자에게는 "~신가요?/~을까요?"로 물음.
-  평서 반말 "~한다./~이다./~있다."는 거의 쓰지 않음(3%). 초안이 반말이어도 "~습니다"로 바꿀 것
-- 줄: 한 줄은 평균 35자 정도로 짧게. 한 문장이 길면 의미 단위로 줄바꿈. 문단 사이에는 빈 줄
-- 도입: "저는 ~했는데요." / "이전 글에서 ~" 처럼 필자의 개인 맥락으로 시작
-- 연결 글: 관련된 과거 글이 있으면 "이전글 :" 또는 "관련글 :" 뒤에 제목과 링크를 붙임
-- 관점: "개인적으로", "제 생각에는" 으로 필자의 관점을 분명히 밝힘
-- 마무리: "여러분"에게 말을 건네며 끝냄 (질문이나 당부)
-- 이모지, 마크다운 기호(#, **, -, >)는 본문에 쓰지 않음
-- 필자: 두 아이(행운이, 행복이)를 둔 가장, 재개발·재테크·AI를 공부하며 기록하는 블로거`;
+import { DEFAULT_PROFILE, getStyleProfile, styleBaselineText } from './style.js';
 
 const SCHEMA = {
   type: 'OBJECT',
@@ -81,7 +71,7 @@ export function readDraftRequest(body) {
   };
 }
 
-function buildPrompt(req, styleSamples, candidates, maxChars) {
+function buildPrompt(req, styleSamples, candidates, maxChars, profile = DEFAULT_PROFILE) {
   const samples = styleSamples.map((s, i) =>
     `<<문체 샘플 ${i + 1}: ${s.title}>>\n${(s.content_final || '').slice(0, 1200)}`).join('\n\n');
   const cands = candidates.map((c, i) => `P${i + 1}. ${c.title}`).join('\n') || '(없음)';
@@ -110,7 +100,7 @@ function buildPrompt(req, styleSamples, candidates, maxChars) {
 문단 수는 초안 분량에 맞게 3~8개.
 
 # 필자의 문체 기준 (과거 글 74편 분석)
-${STYLE_BASELINE}
+${styleBaselineText(profile)}
 
 # 연결 글 (related_posts)
 아래 후보 중 이 글과 실제로 관련 있는 것만 0~2개 고르고, ref에 번호(예: "P1")를 넣으세요.
@@ -217,23 +207,25 @@ export function assembleDraft(req, out, candidates) {
   };
 }
 
-export async function handleWebDraft(body, env) {
+// opts.timeoutMs: Slack 경로처럼 시간 제한이 있는 곳에서 Gemini 호출을 끊기 위함
+export async function handleWebDraft(body, env, ctx, opts = {}) {
   const req = readDraftRequest(body);
   if (!req.memo) {
     return { status: 400, json: { error: '초안 메모가 비어 있습니다.' } };
   }
 
   const query = [req.title, req.memo, req.news?.title].filter(Boolean).join('\n');
-  let past = [];
-  try {
-    past = await searchPastInsights(query, 4, env);
-  } catch (e) {}
+  const [pastResult, profile] = await Promise.all([
+    searchPastInsights(query, 4, env).catch(() => []),
+    getStyleProfile(env, ctx)
+  ]);
+  const past = pastResult || [];
 
   const styleSamples = past.slice(0, 2);
   const candidates = past.filter(p => p.source_url);
   const maxChars = Math.min(4200, Math.max(400, Math.round(req.memo.length * 2.5)));
 
-  const out = await generateJson(buildPrompt(req, styleSamples, candidates, maxChars), SCHEMA, env);
+  const out = await generateJson(buildPrompt(req, styleSamples, candidates, maxChars, profile), SCHEMA, env, { timeoutMs: opts.timeoutMs });
   const result = assembleDraft(req, out, candidates);
   result.meta.max_chars = maxChars;
   return { status: 200, json: result };

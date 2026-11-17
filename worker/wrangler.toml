@@ -12,8 +12,9 @@ compatibility_date = "2026-11-03"
 # 대시보드에서 일반 변수(Plain text)로 등록한 값이 배포 시 지워지지 않도록 유지
 keep_vars = true
 
-# 버전 미리보기 URL 허용 (versions upload --preview-alias 로 배포 전 테스트)
-preview_urls = true
+# 버전 미리보기 URL: 평소에는 끔 (과거 테스트 버전이 외부에서 호출되지 않도록)
+# 배포 전 테스트할 때만 true로 바꾸고 versions upload --preview-alias 사용 → 테스트 후 다시 false로 배포
+preview_urls = false
 
 # AI 요청(web_draft/review/research) 남용 방지: IP당 60초에 10회
 [[ratelimits]]

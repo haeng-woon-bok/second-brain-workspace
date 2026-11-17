@@ -38,11 +38,21 @@ export async function searchPastInsights(text, count, env) {
   return Array.isArray(rows) ? rows : [];
 }
 
-async function callGemini(body, env) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-  );
+async function callGemini(body, env, timeoutMs) {
+  const controller = timeoutMs ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let res;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller?.signal }
+    );
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`Gemini 응답이 ${Math.round(timeoutMs / 1000)}초 안에 오지 않았습니다`);
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(`Gemini API 오류 (HTTP ${res.status}): ${data.error?.message || '알 수 없음'}`);
@@ -61,7 +71,7 @@ export async function generateText(prompt, env) {
 }
 
 // JSON 스키마를 강제한 생성
-export async function generateJson(prompt, schema, env, { temperature = 0.6 } = {}) {
+export async function generateJson(prompt, schema, env, { temperature = 0.6, timeoutMs } = {}) {
   const text = await callGemini({
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
@@ -70,7 +80,7 @@ export async function generateJson(prompt, schema, env, { temperature = 0.6 } = 
       responseMimeType: 'application/json',
       responseSchema: schema
     }
-  }, env);
+  }, env, timeoutMs);
   try {
     return JSON.parse(text);
   } catch (e) {

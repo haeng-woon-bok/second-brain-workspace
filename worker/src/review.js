@@ -6,10 +6,14 @@
 // - 문체 수치(줄 길이, 어미 비율, 이모지)는 모델이 아니라 여기서 직접 계산
 
 import { searchPastInsights, generateJson } from './lib.js';
+import { DEFAULT_PROFILE, getStyleProfile, isMetaLine, splitSentences, classifyEnding, cleanLine } from './style.js';
 
-// 필자 74편 기준선 (2026-11-18 재분석, 5,161문장)
-//  어미: ~니다 49% · ~요 13%(~는데요 8%, 질문형 ~신가요/~을까요 포함) · 평서 반말 ~다 3% · 어미 없는 줄 35%
-const BASELINE = { avgChars: 2358, minChars: 1187, maxChars: 4222, avgLine: 35, nida: 49, yo: 13, plainDa: 3 };
+// 필자 기준선: style_profile(자동 계산, 24시간마다 갱신)에서 가져옴. 없으면 DEFAULT_PROFILE
+const toBaseline = (p = DEFAULT_PROFILE) => ({
+  avgChars: p.chars.avg, minChars: p.chars.min, maxChars: p.chars.max, p10: p.chars.p10 || p.chars.min,
+  avgLine: p.avg_line, nida: p.endings.nida, yo: p.endings.yo, plainDa: p.endings.plain_da,
+  emojiPerPost: p.habits?.emoji_per_post ?? 0, posts: p.posts
+});
 const MAX_COMMENTS = 10;
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 };
 
@@ -43,24 +47,19 @@ const SCHEMA = {
   required: ['structure', 'comments']
 };
 
-// 첨삭 대상에서 제외할 줄: 해시태그 줄, URL, 연결 글 라벨
-function isMetaLine(line) {
-  const t = line.trim();
-  return /^https?:\/\//.test(t) || /^(이전글|관련글)\s*:?\s*$/.test(t) || /^(#[^\s#]+\s*){2,}$/.test(t);
-}
-
-export function computeStyleStats(body) {
-  const lines = String(body).split('\n').map(l => l.trim()).filter(l => l && !isMetaLine(l));
+// 첨삭 대상에서 제외할 줄(해시태그 줄, URL, 연결 글 라벨)은 style.js isMetaLine
+export function computeStyleStats(body, profile = DEFAULT_PROFILE) {
+  const BASELINE = toBaseline(profile);
+  const lines = String(body).split('\n').map(cleanLine).filter(l => l.length > 1 && !isMetaLine(l));
   const text = lines.join('\n');
   // 어미 판별 전에 문장 끝 이모지·기호 제거 ("봐요. 😀" → "봐요.")
-  const sentences = text.split(/(?<=[.?!])\s+|\n/)
-    .map(s => s.replace(/[\p{Extended_Pictographic}️\s*~]+$/gu, '').trim())
-    .filter(s => s.length > 3);
+  const sentences = splitSentences(text);
   const ends = { nida: 0, yo: 0, plainDa: 0 };
   for (const s of sentences) {
-    if (/니다[.?!]?$|니까[.?!]?$/.test(s)) ends.nida++;
-    else if (/요[.?!]?$/.test(s)) ends.yo++;
-    else if (/다[.?!]?$/.test(s)) ends.plainDa++;
+    const e = classifyEnding(s);
+    if (e === 'nida') ends.nida++;
+    else if (e === 'yo') ends.yo++;
+    else if (e === 'plain_da') ends.plainDa++;
   }
   const n = sentences.length || 1;
   const avgLine = lines.length ? Math.round(lines.reduce((a, l) => a + l.length, 0) / lines.length) : 0;
@@ -71,6 +70,7 @@ export function computeStyleStats(body) {
 
   const notes = [];
   if (text.length < BASELINE.minChars) notes.push(`본문 ${text.length.toLocaleString()}자: 평소 글(평균 ${BASELINE.avgChars.toLocaleString()}자, 최소 ${BASELINE.minChars.toLocaleString()}자)보다 짧습니다.`);
+  else if (text.length < BASELINE.p10) notes.push(`본문 ${text.length.toLocaleString()}자: 평소 글 대부분(${BASELINE.p10.toLocaleString()}자 이상)보다 짧은 편입니다.`);
   if (text.length > BASELINE.maxChars) notes.push(`본문 ${text.length.toLocaleString()}자: 평소 가장 긴 글(${BASELINE.maxChars.toLocaleString()}자)보다 깁니다.`);
   if (avgLine > 45) notes.push(`평균 줄 길이 ${avgLine}자: 평소(${BASELINE.avgLine}자)보다 깁니다. 의미 단위로 줄을 바꿔 보세요.`);
   if (longLines) notes.push(`60자가 넘는 줄 ${longLines}개`);
@@ -79,7 +79,7 @@ export function computeStyleStats(body) {
   const enough = sentences.length >= 12;
   if (ends.plainDa >= 3 && (pct('plainDa') > 10 || !enough)) notes.push(`반말 평서형(~한다/~이다) 문장 ${ends.plainDa}개 (${pct('plainDa')}%): 평소 글은 ${BASELINE.plainDa}%뿐이고 "~습니다"가 기본입니다.`);
   if (enough && pct('yo') > 30) notes.push(`"~요"로 끝나는 문장 ${pct('yo')}%: 평소(${BASELINE.yo}%, 주로 "~는데요"와 질문)보다 많습니다.`);
-  if (emoji) notes.push(`이모지 ${emoji}개: 평소 글 본문에는 이모지를 쓰지 않습니다.`);
+  if (emoji > Math.max(0, Math.round(BASELINE.emojiPerPost))) notes.push(`이모지 ${emoji}개: 평소 글은 글당 ${BASELINE.emojiPerPost}개 수준입니다.`);
   if (markdown) notes.push(`마크다운 기호 ${markdown}곳: 네이버 블로그에 그대로 보이니 지워 주세요.`);
   if (gaps) notes.push(`아직 채우지 않은 [✍️ 보충 필요] ${gaps}곳`);
 
@@ -124,7 +124,8 @@ export function validateComments(body, rawComments) {
   return out.slice(0, MAX_COMMENTS).map((c, i) => ({ id: `c${i + 1}`, ...c }));
 }
 
-function buildPrompt(req, samples, stats) {
+function buildPrompt(req, samples, stats, profile = DEFAULT_PROFILE) {
+  const BASELINE = toBaseline(profile);
   const sampleText = samples.map((s, i) => `<<필자 글 ${i + 1}: ${s.title}>>\n${(s.content_final || '').slice(0, 900)}`).join('\n\n');
   return `당신은 블로거 "행운복의 재테크"(dad_luckyhappy)의 첨삭 편집자입니다.
 필자가 쓴 [본문]을 읽고 문제가 있는 곳에 코멘트를 답니다. 글을 새로 쓰지 말고, 지적과 문단 단위 수정안만 제시하세요.
@@ -166,7 +167,7 @@ ${req.title || '(없음)'}
 ${req.body}`;
 }
 
-export async function handleReview(body, env) {
+export async function handleReview(body, env, ctx) {
   const req = {
     title: String(body.title || '').trim(),
     body: String(body.body || ''),
@@ -179,13 +180,14 @@ export async function handleReview(body, env) {
     return { status: 400, json: { error: '본문이 너무 깁니다 (12,000자 이하).' } };
   }
 
-  const stats = computeStyleStats(req.body);
+  const profile = await getStyleProfile(env, ctx);
+  const stats = computeStyleStats(req.body, profile);
   let samples = [];
   try {
     samples = (await searchPastInsights([req.title, req.body.slice(0, 1500)].join('\n'), 2, env));
   } catch (e) {}
 
-  const out = await generateJson(buildPrompt(req, samples, stats), SCHEMA, env, { temperature: 0.3 });
+  const out = await generateJson(buildPrompt(req, samples, stats, profile), SCHEMA, env, { temperature: 0.3 });
 
   const structure = {};
   for (const k of ['intro', 'body', 'insight']) {
@@ -203,6 +205,9 @@ export async function handleReview(body, env) {
       structure,
       comments,
       style: stats,
+      baseline_source: profile.source === 'computed'
+        ? `필자 글 ${profile.posts}편 자동 분석 (${profile.computed_at ? new Date(profile.computed_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) : '-'})`
+        : '기본값 (74편 수동 분석)',
       // 위치를 못 찾았거나 개수 제한으로 버린 코멘트 수 (품질 점검용)
       dropped: Math.max(0, (Array.isArray(out.comments) ? out.comments.length : 0) - comments.length)
     }

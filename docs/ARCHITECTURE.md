@@ -1,5 +1,12 @@
 # dad_luckyhappy AI Insight Studio — 아키텍처 문서
 
+> **2026-11-18 업데이트 요약** (아래 본문은 11-17 최초 분석 기준. 이후 변경은 [REVIEW_DESIGN.md](REVIEW_DESIGN.md) 참고)
+> - Worker 코드는 이제 이 레포 `worker/`에서 관리하고 `npx wrangler deploy`로 배포 (모듈: `index.js` 라우터, `lib.js`, `draft.js`, `review.js`, `drafts.js`, `style.js`)
+> - Worker API 추가: `review`, `drafts_list` / `draft_get` / `draft_save` / `draft_archive` / `review_decision` (작업 키 `X-Work-Key` 필요)
+> - `web_draft`는 "초안 기반 + 내 문체" 생성으로 교체, Slack `@봇`도 같은 로직 사용
+> - Supabase 테이블 추가: `drafts`, `draft_reviews`, `style_profile` (RLS on, service_role만), 마이그레이션은 `second-brain-pipeline/supabase/migrations/`
+> - Rate Limiting(`AI_LIMITER`): AI 요청 IP당 분당 10회, 작업 키 실패도 분당 10회
+
 > 작성일: 2026-11-17 · 분석 대상: `index.html`, `daily_briefing_pipeline.py`, `daily_briefing.yaml`, Cloudflare Worker(`slack-second-brain`), Supabase 테이블 export(`my_insights`, `daily_news`)
 
 ---
