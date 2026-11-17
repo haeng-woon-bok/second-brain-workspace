@@ -50,7 +50,7 @@
 
     <!-- 2. 좌측 영역 (증시 지표 및 4개 섹터 뉴스) -->
     <section class="w-[24%] min-w-[320px] bg-[#FAF9F5] dark:bg-[#1A1D21] border-r border-slate-200/80 dark:border-slate-800 flex flex-col overflow-y-auto">
-      
+
       <!-- 증시 매크로 지표 카드 -->
       <div class="p-4 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
         <div class="flex items-center justify-between mb-2.5">
@@ -121,7 +121,7 @@
 
     <!-- 3. 중앙 영역 (초안 작성 & AI 첨삭) -->
     <section class="w-[52%] bg-[#F4F3EF] dark:bg-[#121417] flex flex-col overflow-y-auto px-8 pt-3 pb-6 space-y-4 select-text">
-      
+
       <!-- 선택 뉴스 참고 박스 -->
       <div id="selected-news-box" class="bg-indigo-50/90 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 hidden shadow-sm">
         <div class="flex items-start justify-between">
@@ -131,7 +131,7 @@
           </div>
           <button onclick="clearSelectedNews()" class="text-xs font-semibold text-slate-500 hover:text-rose-600 bg-[#FAF9F5] dark:bg-[#22262B] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">✕ 선택 해제</button>
         </div>
-        <p id="ref-news-summary" class="text-sm text-slate-700 dark:text-slate-300 mt-2 leading-relaxed"></p>
+        <p id="ref-news-summary" class="text-sm text-slate-700 dark:text-slate-300 mt-2 leading-relaxed whitespace-pre-line"></p>
       </div>
 
       <!-- 입력 에디터 카드 -->
@@ -252,11 +252,15 @@
   <script>
     const WORKER_URL = "https://slack-second-brain.dloolb7.workers.dev/";
 
+    const SECTOR_KEYS = ['stock', 'crypto', 'realestate', 'ai'];
+    const SECTOR_NAMES = { stock: '증시', crypto: '가상자산', realestate: '부동산', ai: 'AI' };
+
     let NEWS_DATA = { stock: [], crypto: [], realestate: [], ai: [] };
     let ARCHIVES_CACHE = [];
     let currentSector = 'stock';
     let selectedNews = null;
     let saveTimer = null;
+    let toastTimer = null;
 
     window.addEventListener('DOMContentLoaded', () => {
       initTheme();
@@ -265,6 +269,39 @@
       fetchInitDataFromWorker();
       loadFromLocalStorage();
     });
+
+    // ---------- 문자열 안전 처리 헬퍼 ----------
+    // 외부 데이터(뉴스 제목, AI 응답, DB 값)를 innerHTML에 넣기 전에 반드시 이스케이프
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // DB에 &quot; / &#39; 형태로 저장된 과거 데이터를 원래 문자로 복원 (textarea는 스크립트를 실행하지 않음)
+    function decodeEntities(value) {
+      const t = document.createElement('textarea');
+      t.innerHTML = String(value ?? '');
+      return t.value;
+    }
+
+    // http(s) 링크만 허용 (javascript: 등 차단)
+    function safeUrl(url) {
+      try {
+        const u = new URL(url);
+        return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '#';
+      } catch (e) {
+        return '#';
+      }
+    }
+
+    // 과거 브리핑에 남아 있는 "[제목](None)" 링크를 "[제목]"으로 정리
+    function stripBrokenLinks(text) {
+      return String(text || '').replace(/\]\((?:None|null|undefined)?\)/g, ']');
+    }
 
     function initTheme() {
       const savedTheme = localStorage.getItem('dad_studio_theme') || 'light';
@@ -289,6 +326,14 @@
       if (el) el.textContent = `KST ${new Intl.DateTimeFormat('ko-KR', options).format(now)}`;
     }
 
+    function formatKstDate(isoString) {
+      if (!isoString) return '날짜 없음';
+      const d = new Date(isoString);
+      if (isNaN(d)) return '날짜 없음';
+      // en-CA 로케일은 YYYY-MM-DD 형식
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    }
+
     async function fetchInitDataFromWorker() {
       try {
         const response = await fetch(WORKER_URL, {
@@ -296,30 +341,17 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'get_init_data' })
         });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
-        // 1. 주요 증시 지표 DOM 즉시 업데이트
+        // 1. 주요 증시 지표 DOM 업데이트
         if (data.indices) {
-          if (data.indices.kospi) {
-            document.getElementById('idx-kospi-val').textContent = data.indices.kospi.val;
-            document.getElementById('idx-kospi-change').textContent = data.indices.kospi.change;
-          }
-          if (data.indices.kosdaq) {
-            document.getElementById('idx-kosdaq-val').textContent = data.indices.kosdaq.val;
-            document.getElementById('idx-kosdaq-change').textContent = data.indices.kosdaq.change;
-          }
-          if (data.indices.sp500) {
-            document.getElementById('idx-sp500-val').textContent = data.indices.sp500.val;
-            document.getElementById('idx-sp500-change').textContent = data.indices.sp500.change;
-          }
-          if (data.indices.nasdaq) {
-            document.getElementById('idx-nasdaq-val').textContent = data.indices.nasdaq.val;
-            document.getElementById('idx-nasdaq-change').textContent = data.indices.nasdaq.change;
-          }
-          if (data.indices.usdkrw) {
-            document.getElementById('idx-usdkrw-val').textContent = data.indices.usdkrw.val;
-            document.getElementById('idx-usdkrw-change').textContent = data.indices.usdkrw.change;
-          }
+          ['kospi', 'kosdaq', 'sp500', 'nasdaq', 'usdkrw'].forEach(key => {
+            const item = data.indices[key];
+            if (!item) return;
+            document.getElementById(`idx-${key}-val`).textContent = item.val;
+            document.getElementById(`idx-${key}-change`).textContent = item.change;
+          });
         }
 
         // 2. 4개 섹터 뉴스 및 AI 요약 반영
@@ -332,92 +364,119 @@
         if (data.archives && Array.isArray(data.archives)) {
           ARCHIVES_CACHE = data.archives.map(item => ({
             id: item.id,
-            date: item.created_at ? new Date(item.created_at).toISOString().slice(0, 10) : '2026-11-06',
-            title: item.title,
-            summary: item.summary || '📌 핵심 관점 요약 없음',
-            tags: item.tags || ['#블로그아카이브'],
+            date: formatKstDate(item.created_at),
+            title: decodeEntities(item.title || '제목 없음'),
+            summary: decodeEntities(item.summary || '📌 핵심 관점 요약 없음'),
+            tags: Array.isArray(item.tags) && item.tags.length ? item.tags : ['#블로그아카이브'],
+            link: item.source_url || '',
             snapshot: 'Supabase DB'
           }));
         }
         showToast('✅ 실시간 데이터 동기화 완료!');
       } catch (err) {
         console.warn('초기 데이터 로딩 에러:', err);
+        showToast(`⚠️ 데이터 동기화 실패: ${err.message}`);
       }
     }
 
-    function parseAndSetNewsData(rawNews, briefingText) {
-      if (briefingText) {
-        // 📌 AI 브리핑(슬랙용 AI 요약) 데이터 우선 파싱
-        const sectorBlocks = briefingText.split(/###\s*/);
-        sectorBlocks.forEach(block => {
-          let targetSector = null;
-          if (block.includes('증시')) targetSector = 'stock';
-          else if (block.includes('가상자산') || block.includes('비트코인')) targetSector = 'crypto';
-          else if (block.includes('부동산')) targetSector = 'realestate';
-          else if (block.includes('AI') || block.includes('보안')) targetSector = 'ai';
+    // 브리핑 블록의 "헤더 한 줄"만 보고 섹터를 판별한다.
+    // (이전에는 블록 본문 전체에서 키워드를 찾아, 본문에 "증시" 등이 나오면 다른 섹터로 잘못 분류됨)
+    function detectSectorFromHeader(headerLine) {
+      const h = headerLine || '';
+      if (h.includes('🪙') || h.includes('가상자산') || h.includes('비트코인')) return 'crypto';
+      if (h.includes('🏢') || h.includes('부동산')) return 'realestate';
+      if (h.includes('🤖') || /\bAI\b/.test(h) || h.includes('보안')) return 'ai';
+      if (h.includes('📈') || h.includes('증시')) return 'stock';
+      return null;
+    }
 
-          if (!targetSector) return;
+    function parseBriefing(briefingText) {
+      const result = { stock: [], crypto: [], realestate: [], ai: [] };
+      const sectorBlocks = briefingText.split(/^###\s*/m);
 
-          const items = block.split(/(?=\d+\.\s*📰)/).filter(b => b.includes('**뉴스 제목**'));
-          const sectorName = targetSector === 'stock' ? '증시' : targetSector === 'crypto' ? '가상자산' : targetSector === 'realestate' ? '부동산' : 'AI';
+      sectorBlocks.forEach(block => {
+        const headerLine = block.split('\n')[0];
+        const targetSector = detectSectorFromHeader(headerLine);
+        if (!targetSector) return;
 
-          NEWS_DATA[targetSector] = items.map((itemStr, idx) => {
-            const titleMatch = itemStr.match(/\[(.*?)\]\((.*?)\)/);
-            const summaryMatch = itemStr.match(/📌\s*\*\*핵심 요약\*\*:\s*([^\n]+)/);
-            const ideaMatch = itemStr.match(/💡\s*\*\*글감 제안[^\*]*\*\*:\s*([\s\S]*?)(?=\n\d+\.|\n-|\n$|$)/);
+        const sectorName = SECTOR_NAMES[targetSector];
+        const items = block.split(/(?=\d+\.\s*📰)/).filter(b => b.includes('**뉴스 제목**'));
 
-            const title = titleMatch ? titleMatch[1].trim() : '뉴스 제목';
-            const link = titleMatch ? titleMatch[2].trim() : '#';
-            let summary = summaryMatch ? summaryMatch[1].trim() : '요약 정보 없음';
-            const idea = ideaMatch ? ideaMatch[1].trim() : '';
+        const parsed = items.map(itemStr => {
+          const titleMatch = itemStr.match(/\[(.*?)\]\((.*?)\)/);
+          const summaryMatch = itemStr.match(/📌\s*\*\*핵심 요약\*\*:\s*([^\n]+)/);
+          const ideaMatch = itemStr.match(/💡\s*\*\*글감 제안[^\*]*\*\*:\s*([\s\S]*?)(?=\n\d+\.|\n-|\n$|$)/);
 
-            return {
-              id: `${targetSector}_${idx}`,
-              sector: sectorName,
-              title: title,
-              link: link,
-              summary: summary,
-              idea: idea,
-              keywords: [sectorName, 'AI요약']
-            };
-          });
+          return {
+            sector: sectorName,
+            title: titleMatch ? titleMatch[1].trim() : '뉴스 제목',
+            link: titleMatch ? titleMatch[2].trim() : '#',
+            summary: summaryMatch ? summaryMatch[1].trim() : '요약 정보 없음',
+            idea: ideaMatch ? stripBrokenLinks(ideaMatch[1].trim()) : '',
+            keywords: [sectorName, 'AI요약']
+          };
         });
-      } else if (rawNews) {
-        // Fallback: rawNews 파싱 (제목 중복 방지)
-        const parseSection = (text, sectorName) => {
-          if (!text) return [];
-          const rawItems = text.split(/(?=•\s*제목:)/).filter(b => b.trim());
-          return rawItems.map((raw, idx) => {
-            const titleMatch = raw.match(/•\s*제목:\s*([^\n]+)/);
-            const linkMatch = raw.match(/링크:\s*([^\n]+)/);
-            const summaryMatch = raw.match(/요약:\s*([\s\S]+)/);
 
-            const title = titleMatch ? titleMatch[1].replace(/\s*-\s*[^-]+$/, '').trim() : '뉴스 제목';
-            const link = linkMatch ? linkMatch[1].trim() : '#';
-            let summary = summaryMatch ? summaryMatch[1].trim() : raw;
+        // 같은 섹터 헤더가 두 번 나오더라도 덮어쓰지 않고 이어 붙임
+        result[targetSector] = result[targetSector].concat(parsed);
+      });
 
-            summary = summary.replace(/^•\s*제목:[^\n]+\n?/, '').replace(/링크:[^\n]+\n?/, '').replace(/요약:\s*/, '').trim();
+      SECTOR_KEYS.forEach(s => {
+        result[s] = result[s].map((item, idx) => ({ ...item, id: `${s}_${idx}` }));
+      });
+      return result;
+    }
 
-            return {
-              id: `${sectorName}_${idx}`,
-              sector: sectorName,
-              title: title,
-              link: link,
-              summary: summary.slice(0, 150) || '요약 정보가 없습니다.',
-              keywords: [sectorName, '실시간뉴스']
-            };
-          });
-        };
-        NEWS_DATA.stock = parseSection(rawNews['증시'], '증시');
-        NEWS_DATA.crypto = parseSection(rawNews['가상자산'], '가상자산');
-        NEWS_DATA.realestate = parseSection(rawNews['부동산'], '부동산');
-        NEWS_DATA.ai = parseSection(rawNews['AI'], 'AI');
-      }
+    function parseRawNews(rawNews) {
+      const result = { stock: [], crypto: [], realestate: [], ai: [] };
+      if (!rawNews) return result;
+
+      const parseSection = (text, sectorKey) => {
+        if (!text) return [];
+        const sectorName = SECTOR_NAMES[sectorKey];
+        const rawItems = text.split(/(?=•\s*제목:)/).filter(b => b.includes('제목:'));
+        return rawItems.map((raw, idx) => {
+          const titleMatch = raw.match(/•\s*제목:\s*([^\n]+)/);
+          const linkMatch = raw.match(/링크:\s*([^\n]+)/);
+          const summaryMatch = raw.match(/요약:\s*([\s\S]+)/);
+
+          const title = titleMatch ? titleMatch[1].replace(/\s*-\s*[^-]+$/, '').trim() : '뉴스 제목';
+          const link = linkMatch ? linkMatch[1].trim() : '#';
+          let summary = summaryMatch ? summaryMatch[1].trim() : raw;
+          summary = summary.replace(/^•\s*제목:[^\n]+\n?/, '').replace(/링크:[^\n]+\n?/, '').replace(/요약:\s*/, '').trim();
+
+          return {
+            id: `${sectorKey}_raw_${idx}`,
+            sector: sectorName,
+            title,
+            link,
+            summary: summary.slice(0, 150) || '요약 정보가 없습니다.',
+            idea: '',
+            keywords: [sectorName, '실시간뉴스']
+          };
+        });
+      };
+
+      result.stock = parseSection(rawNews['증시'], 'stock');
+      result.crypto = parseSection(rawNews['가상자산'] || rawNews['비트코인/이더리움'], 'crypto');
+      result.realestate = parseSection(rawNews['부동산'], 'realestate');
+      result.ai = parseSection(rawNews['AI'], 'ai');
+      return result;
+    }
+
+    function parseAndSetNewsData(rawNews, briefingText) {
+      const fromBriefing = briefingText ? parseBriefing(briefingText) : null;
+      const fromRaw = parseRawNews(rawNews);
+
+      // 섹터별로 AI 브리핑 우선, 비어 있으면 원본 뉴스로 보완
+      SECTOR_KEYS.forEach(s => {
+        NEWS_DATA[s] = (fromBriefing && fromBriefing[s].length) ? fromBriefing[s] : fromRaw[s];
+      });
     }
 
     function switchSector(sector) {
       currentSector = sector;
-      ['stock', 'crypto', 'realestate', 'ai'].forEach(s => {
+      SECTOR_KEYS.forEach(s => {
         const btn = document.getElementById(`tab-${s}`);
         if (btn) {
           btn.className = s === sector 
@@ -430,18 +489,24 @@
       if (!container) return;
       container.innerHTML = '';
 
-      (NEWS_DATA[sector] || []).forEach(item => {
+      const list = NEWS_DATA[sector] || [];
+      if (list.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-400 text-center py-10">이 섹터의 뉴스가 없습니다.</div>`;
+        return;
+      }
+
+      list.forEach(item => {
         const isSelected = selectedNews && selectedNews.id === item.id;
         const card = document.createElement('div');
         card.className = `p-4 rounded-xl border cursor-pointer transition shadow-sm ${isSelected ? 'bg-indigo-50/90 dark:bg-indigo-950/70 border-indigo-500 ring-1 ring-indigo-500' : 'bg-[#F2F0E8] dark:bg-[#22262B] border-slate-200/90 dark:border-slate-700/60 hover:border-indigo-300'}`;
         card.onclick = () => selectNewsCard(item);
         card.innerHTML = `
           <div class="flex items-center justify-between mb-1.5">
-            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">${item.sector}</span>
+            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">${escapeHtml(item.sector)}</span>
             <span class="text-[11px] font-medium text-slate-400">#AI핵심요약</span>
           </div>
-          <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug mb-1.5">${item.title}</h4>
-          <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">${item.summary}</p>
+          <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug mb-1.5">${escapeHtml(item.title)}</h4>
+          <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">${escapeHtml(item.summary)}</p>
         `;
         container.appendChild(card);
       });
@@ -452,15 +517,15 @@
       switchSector(currentSector);
       document.getElementById('selected-news-box').classList.remove('hidden');
       document.getElementById('ref-news-sector').textContent = item.sector;
-      
+
       const titleWrapper = document.getElementById('ref-news-title-wrapper');
       titleWrapper.innerHTML = `
-        <a href="${item.link}" target="_blank" class="text-base font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 mt-1">
-          <span>${item.title}</span>
+        <a href="${escapeHtml(safeUrl(item.link))}" target="_blank" rel="noopener noreferrer" class="text-base font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center space-x-1 mt-1">
+          <span>${escapeHtml(item.title)}</span>
           <span class="text-xs">🔗 원문보기</span>
         </a>
       `;
-      
+
       let refContent = item.summary;
       if (item.idea) refContent += `\n\n💡 아이디어: ${item.idea}`;
       document.getElementById('ref-news-summary').textContent = refContent;
@@ -498,15 +563,18 @@
       filtered.forEach(item => {
         const card = document.createElement('div');
         card.className = 'bg-[#F2F0E8] dark:bg-[#22262B] border border-slate-200/90 dark:border-slate-700/60 rounded-xl p-4 space-y-2.5 shadow-sm';
+        const titleHtml = item.link
+          ? `<a href="${escapeHtml(safeUrl(item.link))}" target="_blank" rel="noopener noreferrer" class="hover:underline">${escapeHtml(item.title)}</a>`
+          : escapeHtml(item.title);
         card.innerHTML = `
           <div class="flex items-center justify-between">
-            <span class="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">${item.date}</span>
-            <span class="text-[11px] font-medium bg-[#FAF9F5] dark:bg-[#1A1D21] text-slate-500 px-2.5 py-0.5 rounded-full border">${item.snapshot}</span>
+            <span class="text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400">${escapeHtml(item.date)}</span>
+            <span class="text-[11px] font-medium bg-[#FAF9F5] dark:bg-[#1A1D21] text-slate-500 px-2.5 py-0.5 rounded-full border">${escapeHtml(item.snapshot)}</span>
           </div>
-          <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">${item.title}</h4>
-          <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-[#FAF9F5] dark:bg-[#14171A] p-3 rounded-lg border-l-4 border-indigo-500">${item.summary}</p>
+          <h4 class="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug">${titleHtml}</h4>
+          <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-[#FAF9F5] dark:bg-[#14171A] p-3 rounded-lg border-l-4 border-indigo-500">${escapeHtml(item.summary)}</p>
           <div class="flex flex-wrap gap-1.5 pt-0.5">
-            ${item.tags.map(t => `<span class="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-[#1A1D21] px-2 py-0.5 rounded-md">${t}</span>`).join('')}
+            ${item.tags.map(t => `<span class="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-200/70 dark:bg-[#1A1D21] px-2 py-0.5 rounded-md">${escapeHtml(t)}</span>`).join('')}
           </div>
         `;
         container.appendChild(card);
@@ -522,7 +590,9 @@
       const title = document.getElementById('draft-title').value;
       const memo = document.getElementById('draft-memo').value;
       const tags = document.getElementById('draft-tags').value;
+      const words = memo.trim() ? memo.trim().split(/\s+/).length : 0;
       document.getElementById('char-count').textContent = `${memo.length.toLocaleString()}자`;
+      document.getElementById('word-count').textContent = `${words.toLocaleString()}단어`;
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         localStorage.setItem('dad_studio_draft', JSON.stringify({ title, memo, tags }));
@@ -547,37 +617,43 @@
       const memo = document.getElementById('draft-memo').value.trim();
       const btn = document.getElementById('btn-refine');
       const engineBadge = document.getElementById('engine-badge');
-    
+
       // 1. 유효성 검사
       if (!memo && !selectedNews) {
         showToast('⚠️ 뉴스를 선택하거나 메모를 작성해 주세요.');
         return;
       }
-    
+
       // 2. 로딩 상태 표시
       btn.disabled = true;
       btn.style.opacity = '0.7';
       if (engineBadge) engineBadge.textContent = '생성 중...';
       showToast('✨ AI가 3단 서사 원문을 생성 중입니다...');
-    
+
+      // 선택한 뉴스는 제목뿐 아니라 요약까지 함께 전달
+      const newsContext = selectedNews
+        ? `${selectedNews.title}\n[참고 뉴스 요약]: ${selectedNews.summary}`
+        : '없음';
+
       try {
         const response = await fetch(WORKER_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             type: 'web_draft', 
-            prompt: `[참고 뉴스]: ${selectedNews ? selectedNews.title : '없음'}\n[제목]: ${title}\n[초안]: ${memo}` 
+            prompt: `[참고 뉴스]: ${newsContext}\n[제목]: ${title}\n[초안]: ${memo}`
           })
         });
-    
-        if (!response.ok) throw new Error(`HTTP 에러 ${response.status}`);
-    
-        const data = await response.json();
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP 에러 ${response.status}`);
+
         if (data.draft) {
           document.getElementById('refined-output').value = data.draft.trim();
           if (engineBadge) engineBadge.textContent = '생성 완료';
           showToast('✅ 3단 서사 글 완성이 완료되었습니다!');
         } else {
+          if (engineBadge) engineBadge.textContent = '응답 없음';
           showToast('⚠️ AI 응답 텍스트가 비어있습니다.');
         }
       } catch (err) {
@@ -591,8 +667,17 @@
     }
 
     async function copyPlainText() {
-      await navigator.clipboard.writeText(document.getElementById('refined-output').value.trim());
-      showToast('📄 클립보드에 복사되었습니다.');
+      const text = document.getElementById('refined-output').value.trim();
+      if (!text) {
+        showToast('⚠️ 복사할 내용이 없습니다.');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('📄 클립보드에 복사되었습니다.');
+      } catch (e) {
+        showToast('⚠️ 클립보드 복사에 실패했습니다.');
+      }
     }
 
     function showToast(msg) {
@@ -600,7 +685,8 @@
       if (!toast) return;
       toast.textContent = msg;
       toast.classList.remove('hidden');
-      setTimeout(() => toast.classList.add('hidden'), 3200);
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.add('hidden'), 3200);
     }
   </script>
 </body>

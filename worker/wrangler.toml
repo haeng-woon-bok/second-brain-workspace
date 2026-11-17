@@ -1,0 +1,13 @@
+# Cloudflare Worker: slack-second-brain
+# 배포: (이 폴더에서) npx wrangler deploy
+#
+# 비밀 값은 코드에 넣지 않고 Cloudflare에만 저장합니다.
+#   SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY, SLACK_BOT_TOKEN
+# 새로 등록/교체할 때: npx wrangler secret put <이름>
+
+name = "slack-second-brain"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+# 대시보드에서 일반 변수(Plain text)로 등록한 값이 배포 시 지워지지 않도록 유지
+keep_vars = true
