@@ -46,14 +46,28 @@ const SCHEMA = {
 
 const GAP_MARK = '[✍️ 보충 필요';
 
+// 메모 안의 "#태그"를 꼭 넣을 해시태그로 분리 (네이버처럼 "#금리 #재개발"로 쓰면 됨)
+// 공백/줄 시작 뒤의 #만 태그로 본다 (C# 같은 단어 보호). 태그만 있던 줄은 메모에서 지운다.
+export function splitMemoHashtags(memo) {
+  const tags = [];
+  const cleaned = String(memo || '').replace(/(^|[ \t\n,])#([^\s#.,!?()[\]{}"']{1,30})/g, (m, pre, tag) => {
+    if (/^\d+$/.test(tag)) return m;            // "#1" 같은 숫자는 태그가 아님
+    tags.push('#' + tag);
+    return pre === ',' ? '' : pre;
+  });
+  const text = cleaned.split('\n').map(l => l.replace(/[ \t,]+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { memo: text, tags: [...new Set(tags)].join(' ') };
+}
+
 // 요청 정규화: 신규(title/memo/tags/news) + 구형(prompt 문자열) 모두 지원
 export function readDraftRequest(body) {
   if (typeof body.memo === 'string' || typeof body.title === 'string') {
     const news = body.news && typeof body.news === 'object' ? body.news : null;
+    const split = splitMemoHashtags(body.memo);
     return {
       title: String(body.title || '').trim(),
-      memo: String(body.memo || '').trim(),
-      tags: String(body.tags || '').trim(),
+      memo: split.memo,
+      tags: [String(body.tags || '').trim(), split.tags].filter(Boolean).join(' '),
       news: news && news.title ? {
         title: String(news.title || ''), summary: String(news.summary || ''), link: String(news.link || '')
       } : null
@@ -63,10 +77,11 @@ export function readDraftRequest(body) {
   const p = String(body.prompt || '');
   const pick = (label) => (p.match(new RegExp(`\\[${label}\\]:\\s*([\\s\\S]*?)(?=\\n\\[[^\\]]+\\]:|$)`)) || [])[1]?.trim() || '';
   const newsTitle = pick('참고 뉴스');
+  const split = splitMemoHashtags(pick('초안') || p);
   return {
     title: pick('제목'),
-    memo: pick('초안') || p,
-    tags: '',
+    memo: split.memo,
+    tags: split.tags,
     news: newsTitle && newsTitle !== '없음' ? { title: newsTitle, summary: pick('참고 뉴스 요약'), link: '' } : null
   };
 }

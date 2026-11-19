@@ -115,8 +115,6 @@
     .area:focus { outline:none; border-color:var(--accent); }
     .area.body { background:var(--panel); padding:18px 22px; font-size:15px; line-height:1.9; min-height:340px; }
     .bar { display:flex; align-items:center; gap:12px; font-size:12px; color:var(--faint); flex-wrap:wrap; }
-    .tags-in { flex:1; min-width:160px; max-width:340px; border:0; border-bottom:1px solid var(--line); background:transparent; padding:3px 2px; font-size:12.5px; color:var(--sub); }
-    .tags-in:focus { outline:none; border-bottom-color:var(--accent); }
     .bar .btn { margin-left:auto; }
     .section-h { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-top:6px; }
     .meta { font-size:12.5px; color:var(--sub); line-height:1.7; border-left:2px solid var(--warn); padding:2px 0 2px 12px; }
@@ -229,11 +227,10 @@
       <input id="draft-title" type="text" class="title-in" placeholder="제목 또는 핵심 주제" oninput="handleDraftInput()" />
 
       <textarea id="draft-memo" rows="5" class="area" oninput="handleDraftInput()"
-        placeholder="뉴스를 보고 떠오른 생각을 편하게 적어 주세요. 글의 내용은 이 메모에서만 나옵니다."></textarea>
+        placeholder="뉴스를 보고 떠오른 생각을 편하게 적어 주세요. 글의 내용은 이 메모에서만 나옵니다.&#10;꼭 넣을 해시태그가 있으면 #금리 #재개발 처럼 함께 적어 주세요."></textarea>
 
       <div class="bar">
         <span class="mono"><span id="char-count">0자</span> · <span id="word-count">0단어</span></span>
-        <input id="draft-tags" type="text" class="tags-in" placeholder="#태그 #입력" oninput="handleDraftInput()" />
         <button onclick="runThreeStageRefiner()" id="btn-refine" class="btn">내 문체로 초안 만들기</button>
       </div>
 
@@ -594,15 +591,23 @@
     function handleDraftInput() {
       const title = document.getElementById('draft-title').value;
       const memo = document.getElementById('draft-memo').value;
-      const tags = document.getElementById('draft-tags').value;
       const words = memo.trim() ? memo.trim().split(/\s+/).length : 0;
       document.getElementById('char-count').textContent = `${memo.length.toLocaleString()}자`;
       document.getElementById('word-count').textContent = `${words.toLocaleString()}단어`;
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
-        localStorage.setItem('dad_studio_draft', JSON.stringify({ title, memo, tags }));
+        localStorage.setItem('dad_studio_draft', JSON.stringify({ title, memo }));
       }, 400);
       scheduleDbSave();
+    }
+
+    // 예전 태그 입력칸에 있던 값은 메모 끝으로 옮긴다 (Worker가 메모 속 #태그를 필수 해시태그로 사용)
+    function mergeTagsIntoMemo(memo, tags) {
+      memo = memo || '';
+      const missing = String(tags || '').split(/[\s,]+/).filter(Boolean)
+        .map(t => t.startsWith('#') ? t : '#' + t)
+        .filter(t => !memo.includes(t));
+      return missing.length ? (memo.trimEnd() + (memo.trim() ? '\n' : '') + missing.join(' ')) : memo;
     }
 
     function loadFromLocalStorage() {
@@ -611,8 +616,7 @@
         try {
           const { title, memo, tags } = JSON.parse(saved);
           document.getElementById('draft-title').value = title || '';
-          document.getElementById('draft-memo').value = memo || '';
-          document.getElementById('draft-tags').value = tags || '';
+          document.getElementById('draft-memo').value = mergeTagsIntoMemo(memo, tags);
           handleDraftInput();
         } catch (e) {}
       }
@@ -664,7 +668,6 @@
     async function runThreeStageRefiner() {
       const title = document.getElementById('draft-title').value.trim();
       const memo = document.getElementById('draft-memo').value.trim();
-      const tags = document.getElementById('draft-tags').value.trim();
       const btn = document.getElementById('btn-refine');
       const engineBadge = document.getElementById('engine-badge');
       const output = document.getElementById('refined-output');
@@ -696,7 +699,6 @@
             type: 'web_draft',
             title,
             memo,
-            tags,
             news: selectedNews ? { title: selectedNews.title, summary: selectedNews.summary, link: selectedNews.link } : null
           })
         });
@@ -1041,7 +1043,7 @@
       return {
         title: document.getElementById('draft-title').value,
         memo: document.getElementById('draft-memo').value,
-        tags: document.getElementById('draft-tags').value,
+        tags: '',
         body: document.getElementById('refined-output').value,
         news: selectedNews ? { title: selectedNews.title, summary: selectedNews.summary, link: selectedNews.link } : null,
         ...(lastAiRatio !== null ? { ai_ratio: lastAiRatio } : {})
@@ -1105,8 +1107,7 @@
       suppressDbSave = true;
       try {
         document.getElementById('draft-title').value = d.title || '';
-        document.getElementById('draft-memo').value = d.memo || '';
-        document.getElementById('draft-tags').value = d.tags || '';
+        document.getElementById('draft-memo').value = mergeTagsIntoMemo(d.memo, d.tags);
         document.getElementById('refined-output').value = d.body || '';
         handleDraftInput();
         handleBodyInput();
