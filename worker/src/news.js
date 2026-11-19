@@ -1,7 +1,7 @@
 // 날짜별 뉴스(달력)와 "이 뉴스와 관련된 내 과거 글" 조회
 import { supabaseHeaders, searchPastInsights } from './lib.js';
 
-export const NEWS_TYPES = new Set(['news_dates', 'news_by_date', 'related_posts']);
+export const NEWS_TYPES = new Set(['news_dates', 'news_by_date', 'related_posts', 'post_get']);
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -25,7 +25,7 @@ async function sbGet(env, path) {
 
 export function splitPayload(row) {
   const p = (row && row.sector_news) || {};
-  return { news: p.news || p, briefing: p.briefing || null, indices: p.indices || null };
+  return { news: p.news || p, briefing: p.briefing || null, indices: p.indices || null, items: p.items || null };
 }
 
 // 문단 고르기: 질의와 글자쌍이 가장 많이 겹치는 문단 (임베딩은 글 단위라 문단은 간단한 겹침으로 선택)
@@ -39,7 +39,7 @@ function bigrams(s) {
 export function bestPassage(content, query, maxLen = 160) {
   const q = bigrams(query);
   const paras = String(content || '')
-    .replace(/[​﻿]/g, '')
+    .replace(/[\u200B\uFEFF]/g, '')
     .split(/\n\s*\n|\n/)
     .map(p => p.trim())
     .filter(p => p.length >= 20 && !/^#|^https?:\/\//.test(p));
@@ -85,10 +85,23 @@ export async function handleNewsRequest(body, env) {
       title: r.title,
       url: r.source_url || '',
       date: kstDate(r.created_at),
-      similarity: Math.round((r.similarity || 0) * 100) / 100,
-      passage: bestPassage(r.content_final, text)
+      similarity: Math.round((r.similarity || 0) * 100) / 100
     }));
     return { status: 200, json: { posts } };
+  }
+
+  if (body.type === 'post_get') {
+    // 사이트 안에서 과거 글 전문 읽기 (공개 블로그 글이므로 작업 키 불필요)
+    const id = Number(body.id);
+    if (!Number.isInteger(id) || id <= 0) return { status: 400, json: { error: 'id가 필요합니다.' } };
+    const rows = await sbGet(env, `my_insights?select=id,created_at,title,summary,tags,source_url,content_final&id=eq.${id}&limit=1`);
+    if (!rows.length) return { status: 404, json: { error: '글을 찾을 수 없습니다.' } };
+    const r = rows[0];
+    return { status: 200, json: { post: {
+      id: r.id, title: r.title, url: r.source_url || '', date: kstDate(r.created_at),
+      summary: r.summary || '', tags: r.tags || [],
+      content: String(r.content_final || '').replace(/[\u200B\uFEFF]/g, '')
+    } } };
   }
 
   return { status: 400, json: { error: 'Invalid request' } };

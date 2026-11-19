@@ -7,13 +7,14 @@ import { handleWebDraft } from './draft.js';
 import { handleReview } from './review.js';
 import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './drafts.js';
 import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
+import { handlePostDigests } from './digests.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
 const ARCHIVE_LIMIT = 200;
 
 // Gemini를 호출하는 웹 요청 타입 (Rate Limiting 대상)
-const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts']);
+const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests']);
 
 export default {
   async fetch(request, env, ctx) {
@@ -60,6 +61,7 @@ export default {
       let latestBriefing = null;
       let latestIndices = null;
       let latestDate = null;
+      let latestItems = null;
 
       try {
         const sbRes = await fetch(
@@ -80,12 +82,22 @@ export default {
             latestNews = rawPayload.news || rawPayload;
             latestBriefing = rawPayload.briefing || null;
             latestIndices = rawPayload.indices || null;
+            latestItems = rawPayload.items || null;
             latestDate = kstDate(newsRows[0].created_at);
           }
         }
       } catch (e) {}
 
-      return jsonResponse({ news: latestNews, briefing: latestBriefing, archives, indices: latestIndices, news_date: latestDate });
+      return jsonResponse({ news: latestNews, briefing: latestBriefing, archives, indices: latestIndices, items: latestItems, news_date: latestDate });
+    }
+
+    if (body.type === 'post_digests') {
+      try {
+        const { status, json } = await handlePostDigests(body, env);
+        return jsonResponse(json, status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 502);
+      }
     }
 
     if (NEWS_TYPES.has(body.type)) {

@@ -175,6 +175,14 @@
     .mem .dt { font-family:var(--mono); font-size:11px; color:var(--faint); margin-top:2px; }
     .mem .ps { font-size:12.5px; color:var(--sub); line-height:1.65; margin-top:6px; }
     .mem .kw { display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; }
+    .mem .acts { display:flex; gap:12px; margin-top:7px; }
+    .mem-mode { font-size:12px; color:var(--sub); margin-top:10px; display:flex; justify-content:space-between; gap:8px; }
+    .mem-mode b { color:var(--ink); font-weight:600; }
+    .reader { flex:1; overflow-y:auto; padding:16px 20px 28px; }
+    .reader h3 { font-family:var(--serif); font-size:17px; font-weight:600; line-height:1.45; margin:10px 0 4px; }
+    .reader .sum { font-size:12.5px; color:var(--sub); background:var(--sunken); border-radius:var(--radius); padding:10px 12px; margin:12px 0; line-height:1.65; }
+    .reader .body { font-size:13.5px; line-height:1.85; white-space:pre-line; }
+    .news-item .m { font-size:11.5px; color:var(--faint); margin-top:2px; }
     .empty { text-align:center; color:var(--faint); font-size:12.5px; padding:48px 0; }
 
     /* ===== 토스트 ===== */
@@ -274,13 +282,13 @@
       <div class="head">
         <div class="label">내 글 기억</div>
         <div class="search">
-          <input id="archive-search" type="text" placeholder="키워드 검색 (예: 금리, AI)" oninput="renderArchiveList()" />
+          <input id="archive-search" type="text" placeholder="예전에 쓴 글 찾기 (예: 금리, 재개발)" oninput="renderMemory()" />
           <button onclick="triggerSearchAll()" class="btn-sec btn-xs">전체</button>
         </div>
+        <div class="mem-mode" id="mem-mode"></div>
       </div>
-      <div id="archive-list-container" class="mem-list">
-        <div class="empty">키워드를 검색하거나 [전체]를 누르세요.</div>
-      </div>
+      <div id="archive-list-container" class="mem-list"></div>
+      <div id="post-reader" class="reader hidden"></div>
     </section>
   </main>
 
@@ -380,7 +388,7 @@
         // 1. 가장 최근 뉴스 + 달력
         currentNewsDate = data.news_date || null;
         if (data.briefing || data.news) {
-          parseAndSetNewsData(data.news, data.briefing);
+          parseAndSetNewsData(data.news, data.briefing, data.items);
           stampNewsDate(currentNewsDate);
           switchSector(currentSector);
         }
@@ -400,6 +408,7 @@
             link: item.source_url || '',
             snapshot: 'Supabase DB'
           }));
+          renderMemory();
         }
       } catch (err) {
         console.warn('초기 데이터 로딩 에러:', err);
@@ -468,7 +477,9 @@
           const linkMatch = raw.match(/링크:\s*([^\n]+)/);
           const summaryMatch = raw.match(/요약:\s*([\s\S]+)/);
 
-          const title = titleMatch ? titleMatch[1].replace(/\s*-\s*[^-]+$/, '').trim() : '뉴스 제목';
+          const rawTitle = titleMatch ? titleMatch[1].trim() : '뉴스 제목';
+          const title = rawTitle.replace(/\s*-\s*[^-]+$/, '').trim();
+          const sourceMatch = rawTitle.match(/\s-\s([^-]+)$/);
           const link = linkMatch ? linkMatch[1].trim() : '#';
           let summary = summaryMatch ? summaryMatch[1].trim() : raw;
           summary = summary.replace(/^•\s*제목:[^\n]+\n?/, '').replace(/링크:[^\n]+\n?/, '').replace(/요약:\s*/, '').trim();
@@ -478,6 +489,7 @@
             sector: sectorName,
             title,
             link,
+            source: sourceMatch ? sourceMatch[1].trim() : '',
             // 구글 뉴스 RSS 요약은 대개 "제목 + 언론사"라 제목과 같으면 비운다
             summary: titleKey(summary).startsWith(titleKey(title).slice(0, 20)) ? '' : summary.slice(0, 150),
             idea: '',
@@ -498,18 +510,30 @@
       return String(t || '').replace(/\s*-\s*[^-]+$/, '').replace(/[^0-9A-Za-z가-힣]/g, '').toLowerCase();
     }
 
-    // 섹터별 목록 = AI 브리핑 기사(글감 제안 포함) + 나머지 헤드라인(최대 10개까지)
-    function parseAndSetNewsData(rawNews, briefingText) {
+    // 섹터별 목록 (최대 10개, 하나의 목록)
+    //  - items: 파이프라인이 기사마다 만든 요약·글감 제안 (없던 날은 RSS 원문으로 대체)
+    //  - briefing: AI가 고른 기사 3개의 핵심 요약·글감 제안(과거 글 연결 포함) → 해당 기사에 덮어쓰고 맨 위로
+    const ITEM_SECTOR_KEYS = { stock: '증시', crypto: '가상자산', realestate: '부동산', ai: 'AI' };
+    function parseAndSetNewsData(rawNews, briefingText, items) {
       const fromBriefing = briefingText ? parseBriefing(briefingText) : null;
       const fromRaw = parseRawNews(rawNews);
       SECTOR_KEYS.forEach(s => {
-        const brief = (fromBriefing ? fromBriefing[s] : []).map(it => ({ ...it, kind: 'brief' }));
-        const links = new Set(brief.map(b => b.link));
-        const titles = new Set(brief.map(b => titleKey(b.title)));
-        const more = fromRaw[s]
-          .filter(r => !links.has(r.link) && !titles.has(titleKey(r.title)))
-          .map(it => ({ ...it, kind: 'headline' }));
-        NEWS_DATA[s] = brief.concat(more).slice(0, Math.max(10, brief.length));
+        const fromItems = items && Array.isArray(items[ITEM_SECTOR_KEYS[s]])
+          ? items[ITEM_SECTOR_KEYS[s]].map((it, idx) => ({
+              id: `${s}_item_${idx}`, sector: SECTOR_NAMES[s], title: String(it.title || ''), link: String(it.link || '#'),
+              source: String(it.source || ''), summary: String(it.summary || ''), idea: String(it.idea || '')
+            }))
+          : null;
+        const base = (fromItems && fromItems.length ? fromItems : fromRaw[s]).map(it => ({ ...it, kind: 'headline' }));
+        const brief = fromBriefing ? fromBriefing[s] : [];
+        const top = [];
+        brief.forEach(b => {
+          const i = base.findIndex(x => (b.link && x.link === b.link) || titleKey(x.title) === titleKey(b.title));
+          if (i < 0) { top.push({ ...b, kind: 'brief', source: '' }); return; }
+          const [hit] = base.splice(i, 1);
+          top.push({ ...hit, summary: b.summary || hit.summary, idea: b.idea || hit.idea, kind: 'brief' });
+        });
+        NEWS_DATA[s] = top.concat(base).slice(0, Math.max(10, top.length));
       });
     }
 
@@ -530,32 +554,23 @@
         return;
       }
 
-      const brief = list.filter(i => i.kind === 'brief');
-      const more = list.filter(i => i.kind !== 'brief');
-      const addGroup = (label, items, startNo) => {
-        if (!items.length) return;
-        if (brief.length) container.insertAdjacentHTML('beforeend', `<div class="group-h"><span>${label}</span><span>${items.length}</span></div>`);
-        items.forEach((item, i) => {
-          const row = document.createElement('div');
-          const isOn = previewNewsItem && previewNewsItem.id === item.id;
-          row.className = `news-item${isOn ? ' on' : ''}`;
-          row.onclick = () => previewNews(item);
-          row.innerHTML = `
-            <span class="no">${String(startNo + i).padStart(2, '0')}</span>
-            <div>
-              <div class="t">${escapeHtml(item.title)}</div>
-              ${item.summary ? `<div class="s clamp2">${escapeHtml(item.summary)}</div>` : ''}
-            </div>`;
-          container.appendChild(row);
-        });
-      };
-      addGroup('AI 브리핑 · 글감 제안 포함', brief, 1);
-      addGroup('그 밖의 헤드라인', more, brief.length + 1);
+      list.forEach((item, i) => {
+        const row = document.createElement('div');
+        const isOn = previewNewsItem && previewNewsItem.id === item.id;
+        row.className = `news-item${isOn ? ' on' : ''}`;
+        row.onclick = () => previewNews(item);
+        row.innerHTML = `
+          <span class="no">${String(i + 1).padStart(2, '0')}</span>
+          <div>
+            <div class="t">${escapeHtml(item.title)}</div>
+            ${item.source ? `<div class="m">${escapeHtml(item.source)}</div>` : ''}
+          </div>`;
+        container.appendChild(row);
+      });
     }
 
     // ---------- 뉴스 카드: 미리보기 → "이 뉴스로 글쓰기"로 초안에 연결 ----------
     let previewNewsItem = null;
-    const relatedCache = new Map();
 
     function isAttached(item) {
       return !!(selectedNews && item && (selectedNews.link && selectedNews.link === item.link || selectedNews.title === item.title));
@@ -565,7 +580,7 @@
       previewNewsItem = item;
       switchSector(currentSector);
       renderNewsCard();
-      loadRelatedPosts(item);
+      renderMemory();
       document.getElementById('selected-news-box').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
@@ -574,6 +589,7 @@
       document.getElementById('selected-news-box').classList.add('hidden');
       switchSector(currentSector);
       renderAttachedNews();
+      renderMemory();
     }
 
     function renderNewsCard() {
@@ -586,21 +602,10 @@
       const href = safeUrl(item.link);
       document.getElementById('ref-news-title-wrapper').innerHTML = `<h3>${escapeHtml(item.title)}</h3>`;
 
-      const rel = relatedCache.get(item.id);
-      const relHtml = rel === undefined
-        ? '<span class="muted">관련 글을 찾는 중…</span>'
-        : rel === null ? '<span class="muted">관련 글을 불러오지 못했습니다.</span>'
-        : !rel.length ? '<span class="muted">비슷한 주제의 과거 글이 없습니다.</span>'
-        : `<div class="related">${rel.map(p => `
-            <div>
-              <div class="r-t">${p.url ? `<a href="${escapeHtml(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(decodeEntities(p.title))}</a>` : escapeHtml(decodeEntities(p.title))}<span class="r-d">${escapeHtml((p.date || '').replace(/-/g, '.'))}</span></div>
-              ${p.passage ? `<div class="r-p">${escapeHtml(p.passage)}</div>` : ''}
-            </div>`).join('')}</div>`;
-
       document.getElementById('ref-news-summary').innerHTML =
-        (item.summary ? `<dt>${item.kind === 'brief' ? '핵심 요약' : '요약'}</dt><dd>${escapeHtml(item.summary)}</dd>` : '') +
+        (item.summary ? `<dt>요약</dt><dd>${escapeHtml(item.summary)}</dd>` : '') +
         (item.idea ? `<dt>글감 제안</dt><dd>${inlineMarkdown(item.idea)}</dd>` : '') +
-        `<dt>내 과거 글</dt><dd>${relHtml}</dd>`;
+        (!item.summary && !item.idea ? `<dt>요약</dt><dd class="muted">이 날짜에는 요약이 없습니다. 원문을 확인해 주세요.</dd>` : '');
 
       const attached = isAttached(item);
       document.getElementById('ref-news-actions').innerHTML =
@@ -609,21 +614,6 @@
           : `<button class="btn" onclick="attachPreviewNews()">이 뉴스로 글쓰기</button>`) +
         (href !== '#' ? `<a class="btn-sec" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">원문 ↗</a>` : '');
       renderAttachedNews();
-    }
-
-    async function loadRelatedPosts(item) {
-      if (relatedCache.has(item.id)) return;
-      try {
-        const res = await fetch(WORKER_URL, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'related_posts', text: `${item.title}\n${item.summary}`, count: 3 })
-        });
-        const data = await res.json().catch(() => ({}));
-        relatedCache.set(item.id, res.ok ? (data.posts || []) : null);
-      } catch (e) {
-        relatedCache.set(item.id, null);
-      }
-      if (previewNewsItem && previewNewsItem.id === item.id) renderNewsCard();
     }
 
     function attachPreviewNews() {
@@ -724,7 +714,7 @@
         const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'news_by_date', date }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        parseAndSetNewsData(data.news, data.briefing);
+        parseAndSetNewsData(data.news, data.briefing, data.items);
         stampNewsDate(date);
         updateNewsDateLabel();
         switchSector(currentSector);
@@ -736,46 +726,169 @@
       }
     }
 
-    function renderArchiveList(showAll = false) {
+    // ---------- 우측: 내 글 기억 ----------
+    // 보여 주는 순서: 검색어 > [전체] > 미리보는 뉴스와 관련된 글 > 지금 쓰는 글과 관련된 글
+    const DIGESTS = new Map();          // post id → {summary, keywords}
+    let digestsUnavailable = false;
+    const relatedByText = new Map();    // 질의 텍스트 → [{id, similarity}] | null(실패)
+    let memShowAll = false;
+    let draftRelatedText = '';
+    let draftRelatedTimer = null;
+
+    function stripOpening(s) {
+      return String(s || '').replace(/^📌\s*/u, '').replace(/^관점:\s*/, '').replace(/[\u200B\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    function draftContextText() {
+      const t = document.getElementById('draft-title').value.trim();
+      const m = document.getElementById('draft-memo').value.trim();
+      const b = document.getElementById('refined-output').value.trim().slice(0, 800);
+      return [t, m, b].filter(Boolean).join('\n').slice(0, 1000);
+    }
+
+    function scheduleDraftRelated() {
+      clearTimeout(draftRelatedTimer);
+      draftRelatedTimer = setTimeout(() => {
+        const text = draftContextText();
+        // 30자 미만이거나 마지막 조회와 거의 같으면 건너뜀
+        if (text.length < 30 || Math.abs(text.length - draftRelatedText.length) < 40 && text.slice(0, 60) === draftRelatedText.slice(0, 60)) return;
+        draftRelatedText = text;
+        if (!previewNewsItem && !document.getElementById('archive-search').value.trim() && !memShowAll) renderMemory();
+      }, 5000);
+    }
+
+    async function fetchRelated(text) {
+      if (relatedByText.has(text)) return relatedByText.get(text);
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'related_posts', text, count: 5 }) });
+        const data = await res.json().catch(() => ({}));
+        const val = res.ok ? (data.posts || []) : null;
+        relatedByText.set(text, val);
+        return val;
+      } catch (e) { return null; }
+    }
+
+    async function loadDigests(ids, round = 0) {
+      if (digestsUnavailable) return;
+      const need = ids.filter(id => !DIGESTS.has(id)).slice(0, 12);
+      if (!need.length) return;
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'post_digests', ids: need }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (data.unavailable) { digestsUnavailable = true; return; }
+        Object.entries(data.digests || {}).forEach(([id, d]) => DIGESTS.set(Number(id), d));
+        if ((data.pending || []).length && round < 2) setTimeout(() => loadDigests(data.pending, round + 1).then(() => renderMemoryCards(lastMemIds)), 1200);
+      } catch (e) {}
+    }
+
+    let lastMemIds = [];
+    let memRenderSeq = 0;
+    function setMemMode(html) { document.getElementById('mem-mode').innerHTML = html; }
+
+    async function renderMemory() {
+      closeReader(false);
+      const seq = ++memRenderSeq;
       const container = document.getElementById('archive-list-container');
-      if (!container) return;
-      const typed = document.getElementById('archive-search').value.trim().toLowerCase();
-      const query = showAll === true && !typed ? 'all' : typed;
+      const query = document.getElementById('archive-search').value.trim().toLowerCase();
+      if (query) memShowAll = false;
 
-      if (!query) {
-        container.innerHTML = `<div class="empty">키워드를 검색하거나 [전체]를 누르세요.</div>`;
+      if (query || memShowAll) {
+        const list = memShowAll && !query ? ARCHIVES_CACHE : ARCHIVES_CACHE.filter(item => {
+          const d = DIGESTS.get(item.id);
+          const hay = [item.title, stripOpening(item.summary), d ? d.summary : '', d ? d.keywords.join(' ') : ''].join(' ').toLowerCase();
+          return hay.includes(query);
+        });
+        setMemMode(memShowAll && !query ? `<span><b>전체 글</b> ${list.length}편</span>` : `<span><b>검색 결과</b> ${list.length}편</span>`);
+        renderMemoryCards(list.map(i => i.id));
         return;
       }
 
-      container.innerHTML = '';
-      const filtered = ARCHIVES_CACHE.filter(item => {
-        if (query === 'all') return true;
-        return item.title.toLowerCase().includes(query) || item.summary.toLowerCase().includes(query) || item.tags.some(t => t.toLowerCase().includes(query));
-      });
-
-      if (filtered.length === 0) {
-        container.innerHTML = `<div class="empty">검색된 글이 없습니다.</div>`;
+      let text = '', label = '';
+      if (previewNewsItem) {
+        text = `${previewNewsItem.title}\n${previewNewsItem.summary || ''}`;
+        label = '<span><b>이 뉴스와 관련된 내 글</b></span>';
+      } else if (draftContextText().length >= 30) {
+        text = draftRelatedText || draftContextText();
+        draftRelatedText = text;
+        label = '<span><b>지금 쓰는 글과 관련된 내 글</b></span><span class="muted">쓰는 내용에 따라 바뀜</span>';
+      }
+      if (!text) {
+        setMemMode('');
+        lastMemIds = [];
+        container.innerHTML = '<div class="empty">뉴스를 고르거나 메모를 쓰면<br>관련된 내 과거 글이 여기에 나옵니다.</div>';
         return;
       }
+      setMemMode(label);
+      if (!relatedByText.has(text)) container.innerHTML = '<div class="empty">관련 글을 찾는 중…</div>';
+      const posts = await fetchRelated(text);
+      if (seq !== memRenderSeq) return;
+      if (posts === null) { container.innerHTML = '<div class="empty">관련 글을 불러오지 못했습니다.</div>'; return; }
+      renderMemoryCards(posts.map(p => p.id));
+    }
 
-      filtered.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'mem';
-        const titleHtml = item.link
-          ? `<a href="${escapeHtml(safeUrl(item.link))}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>`
-          : escapeHtml(item.title);
-        card.innerHTML = `
-          <div class="tt">${titleHtml}</div>
-          <div class="dt">${escapeHtml(item.date.replace(/-/g, '.'))}</div>
-          <div class="ps clamp3">${escapeHtml(item.summary)}</div>
-          <div class="kw">${item.tags.map(t => `<span class="tag">${escapeHtml(String(t).replace(/^#/, ''))}</span>`).join('')}</div>`;
-        container.appendChild(card);
-      });
+    function renderMemoryCards(ids) {
+      lastMemIds = ids;
+      const container = document.getElementById('archive-list-container');
+      if (!ids.length) { container.innerHTML = '<div class="empty">해당하는 글이 없습니다.</div>'; return; }
+      const byId = new Map(ARCHIVES_CACHE.map(a => [a.id, a]));
+      container.innerHTML = ids.map(id => {
+        const a = byId.get(id);
+        if (!a) return '';
+        const d = DIGESTS.get(id);
+        const sum = d ? escapeHtml(d.summary)
+          : digestsUnavailable ? (/^핵심 관점 요약 없음/.test(stripOpening(a.summary)) ? '' : `<span class="muted">글 앞부분 ·</span> ${escapeHtml(stripOpening(a.summary).slice(0, 120))}`)
+          : '<span class="muted">요약을 만드는 중…</span>';
+        return `<div class="mem">
+          <div class="tt"><a href="#" onclick="openReader(${id});return false;">${escapeHtml(a.title)}</a></div>
+          <div class="dt">${escapeHtml(a.date.replace(/-/g, '.'))}</div>
+          <div class="ps">${sum}</div>
+          ${d && d.keywords.length ? `<div class="kw">${d.keywords.map(k => `<span class="tag">${escapeHtml(k)}</span>`).join('')}</div>` : ''}
+          <div class="acts"><button class="link" onclick="openReader(${id})">전문 보기</button>${a.link ? `<a class="link" href="${escapeHtml(safeUrl(a.link))}" target="_blank" rel="noopener noreferrer">네이버 ↗</a>` : ''}</div>
+        </div>`;
+      }).join('');
+      // 화면에 보이는 앞쪽 글부터 요약 요청
+      const missing = ids.filter(id => !DIGESTS.has(id)).slice(0, 12);
+      if (missing.length && !digestsUnavailable) loadDigests(missing).then(() => { if (lastMemIds === ids) renderMemoryCards(ids); });
     }
 
     function triggerSearchAll() {
       document.getElementById('archive-search').value = '';
-      renderArchiveList(true);
+      memShowAll = !memShowAll;
+      renderMemory();
+    }
+
+    // 사이트 안에서 과거 글 전문 읽기
+    async function openReader(id) {
+      const reader = document.getElementById('post-reader');
+      document.getElementById('archive-list-container').classList.add('hidden');
+      reader.classList.remove('hidden');
+      reader.innerHTML = '<div class="empty">불러오는 중…</div>';
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'post_get', id }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        const p = data.post;
+        const d = DIGESTS.get(id);
+        reader.innerHTML = `
+          <button class="link" onclick="closeReader()">← 목록으로</button>
+          <h3>${escapeHtml(decodeEntities(p.title))}</h3>
+          <div class="muted mono">${escapeHtml((p.date || '').replace(/-/g, '.'))}${p.url ? ` · <a class="link" href="${escapeHtml(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">네이버에서 보기 ↗</a>` : ''}</div>
+          ${d ? `<div class="sum">${escapeHtml(d.summary)}</div>` : ''}
+          <div class="body">${escapeHtml(p.content.replace(/\n{3,}/g, '\n\n').trim())}</div>`;
+        reader.scrollTop = 0;
+      } catch (e) {
+        reader.innerHTML = `<button class="link" onclick="closeReader()">← 목록으로</button><div class="empty">글을 불러오지 못했습니다: ${escapeHtml(e.message)}</div>`;
+      }
+    }
+
+    function closeReader(rerender = true) {
+      const reader = document.getElementById('post-reader');
+      if (reader.classList.contains('hidden')) return;
+      reader.classList.add('hidden');
+      document.getElementById('archive-list-container').classList.remove('hidden');
     }
 
     function handleDraftInput() {
@@ -789,6 +902,7 @@
         localStorage.setItem('dad_studio_draft', JSON.stringify({ title, memo }));
       }, 400);
       scheduleDbSave();
+      scheduleDraftRelated();
     }
 
     // 예전 태그 입력칸에 있던 값은 메모 끝으로 옮긴다 (Worker가 메모 속 #태그를 필수 해시태그로 사용)
@@ -835,6 +949,7 @@
         localStorage.setItem('dad_studio_body', document.getElementById('refined-output').value);
       }, 400);
       scheduleDbSave();
+      scheduleDraftRelated();
     }
 
     function renderDraftMeta(meta) {
