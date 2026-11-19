@@ -101,7 +101,6 @@
     .news-item:hover .t { text-decoration:underline; text-decoration-color:var(--line); text-underline-offset:3px; }
     .news-item.on { background:var(--sunken); margin:0 -10px; padding:10px; border-bottom-color:transparent; }
     .news-item.on .t { font-weight:600; }
-    .ai-mark { white-space:nowrap; font-size:10px; border:1px solid var(--line); padding:0 5px; border-radius:2px; color:var(--sub); margin-left:6px; vertical-align:1px; }
 
     /* ===== 중앙: 뉴스 카드 · 에디터 ===== */
     .newscard .top { display:flex; justify-content:space-between; align-items:center; }
@@ -518,7 +517,7 @@
         row.innerHTML = `
           <span class="no">${String(i + 1).padStart(2, '0')}</span>
           <div>
-            <div class="t">${escapeHtml(item.title)}${item.idea ? '<span class="ai-mark">AI</span>' : ''}</div>
+            <div class="t">${escapeHtml(item.title)}</div>
             <div class="s clamp2">${escapeHtml(item.summary)}</div>
           </div>`;
         container.appendChild(row);
