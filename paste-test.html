@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>네이버 붙여넣기 테스트</title>
+<style>
+  :root { --bg:#f3efe6; --card:#fbf9f4; --ink:#2b2824; --sub:#6b645a; --line:#ddd5c6; --accent:#7a5c3a; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.7 "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 6px; }
+  .sub { color:var(--sub); margin:0 0 20px; }
+  ol { padding-left:20px; margin:0 0 20px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 20px; }
+  button { font:inherit; padding:9px 16px; border:1px solid var(--ink); background:var(--ink); color:var(--card); border-radius:3px; cursor:pointer; }
+  button.sec { background:transparent; color:var(--ink); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:3px; padding:20px 22px; }
+  .card p { margin:0; line-height:1.9; }
+  .nv-mark { background:#fff8b2; }
+  .nv-h { font-size:24px; font-weight:700; }
+  .nv-hr { border:0; border-top:1px solid #c9c2b5; width:30%; margin:18px auto; }
+  .nv-link { text-align:center; }
+  .nv-empty { min-height:1.9em; }
+  table { border-collapse:collapse; width:100%; margin:8px 0 20px; font-size:14px; }
+  td, th { border:1px solid var(--line); padding:6px 8px; text-align:left; }
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:var(--card); padding:8px 16px; border-radius:3px; display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>네이버 붙여넣기 테스트</h1>
+  <p class="sub">서식이 들어간 샘플을 두 가지 방식으로 복사해, 네이버 에디터가 어떤 서식을 살리는지 확인합니다.</p>
+
+  <ol>
+    <li>PC에서 <a href="https://blog.naver.com/dad_luckyhappy/postwrite" target="_blank" rel="noopener noreferrer">네이버 블로그 글쓰기</a>를 엽니다.</li>
+    <li><b>방식 A 복사</b>를 누르고 에디터 본문에 붙여 넣습니다(Ctrl+V).</li>
+    <li>엔터를 몇 번 친 뒤 <b>방식 B 복사</b>를 누르고 그 아래에 붙여 넣습니다.</li>
+    <li>아래 표의 다섯 가지가 A와 B에서 각각 살았는지 알려 주세요. 스크린샷 한 장이면 충분합니다.</li>
+    <li>확인이 끝나면 <b>발행하지 말고</b> 글쓰기 창을 닫아 주세요. 임시저장 글이 생기면 지워 주세요.</li>
+  </ol>
+
+  <div class="row">
+    <button onclick="copy('A')">방식 A 복사 (일반 HTML)</button>
+    <button onclick="copy('B')" class="sec">방식 B 복사 (네이버 구조)</button>
+  </div>
+
+  <table>
+    <tr><th>확인할 것</th><th>샘플에서 위치</th></tr>
+    <tr><td>노란 형광펜</td><td>"드디어 마무리", "계약금과 중도금 비율"</td></tr>
+    <tr><td>굵게</td><td>"모든 서류에 도장을 찍었습니다"</td></tr>
+    <tr><td>소제목 (큰 굵은 글씨)</td><td>"카오스 1. …"</td></tr>
+    <tr><td>가운데 구분선</td><td>소제목 바로 위</td></tr>
+    <tr><td>가운데 정렬 이전글 링크</td><td>둘째 줄 "이전글 : …"</td></tr>
+  </table>
+
+  <div class="card" id="preview"></div>
+</main>
+<div id="toast"></div>
+<script src="naver-format.js"></script>
+<script>
+  const SAMPLE = [
+    '[붙여넣기 테스트] 이전 글에서 저는 첫 집 매도를 위해 치열하게 가격 협상했던 경험을 공유했는데요.',
+    '',
+    '이전글 : [5년간 정든 첫 집 매도... 혼돈의 카오스 그 잡채였던 것](https://blog.naver.com/dad_luckyhappy/224467831898)',
+    '',
+    '오늘은 우여곡절 많았던 제 첫 집 매도 스토리를 ==드디어 마무리== 지어보고자 합니다.',
+    '',
+    '---',
+    '',
+    '## 카오스 1. 이상한 기준의 계약금 / 중도금 / 잔금 비율',
+    '',
+    '가장 큰 복병은 ==계약금과 중도금 비율==이었습니다.',
+    '그래도 결국 **모든 서류에 도장을 찍었습니다.**',
+    '',
+    '---',
+    '',
+    '여러분은 어떤 경험이 있으신가요?'
+  ].join('\n');
+
+  document.getElementById('preview').innerHTML = NaverFormat.toPreview(SAMPLE);
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => { t.style.display = 'none'; }, 2200);
+  }
+
+  async function copy(kind) {
+    const html = kind === 'A' ? NaverFormat.toHtmlA(SAMPLE) : NaverFormat.toHtmlB(SAMPLE);
+    try {
+      await NaverFormat.copyRich(html, NaverFormat.toPlain(SAMPLE));
+      toast(`방식 ${kind}를 복사했습니다. 네이버 에디터에 붙여 넣어 주세요.`);
+    } catch (e) {
+      toast('복사에 실패했습니다. 다른 브라우저(크롬/엣지)로 열어 주세요.');
+    }
+  }
+</script>
+</body>
+</html>
