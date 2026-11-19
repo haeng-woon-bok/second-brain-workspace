@@ -1,5 +1,6 @@
 // 날짜별 뉴스(달력)와 "이 뉴스와 관련된 내 과거 글" 조회
 import { supabaseHeaders, searchPastInsights } from './lib.js';
+import { getPublishDates, publishedOf } from './published.js';
 
 export const NEWS_TYPES = new Set(['news_dates', 'news_by_date', 'related_posts', 'post_get']);
 
@@ -56,7 +57,7 @@ export function bestPassage(content, query, maxLen = 160) {
   return best.length > maxLen ? best.slice(0, maxLen).replace(/\s+\S*$/, '') + '…' : best;
 }
 
-export async function handleNewsRequest(body, env) {
+export async function handleNewsRequest(body, env, ctx) {
   if (body.type === 'news_dates') {
     // 최근 120일치 날짜 목록 (하루에 여러 번 실행됐으면 하나로)
     const since = new Date(Date.now() - 120 * 86400000).toISOString();
@@ -79,14 +80,19 @@ export async function handleNewsRequest(body, env) {
     const text = String(body.text || '').slice(0, 1000).trim();
     if (text.length < 4) return { status: 400, json: { error: 'text가 필요합니다.' } };
     const count = Math.min(Math.max(Number(body.count) || 3, 1), 5);
-    const rows = await searchPastInsights(text, count, env);
+    const [rows, dates] = await Promise.all([searchPastInsights(text, count, env), getPublishDates(ctx)]);
     const posts = rows.map(r => ({
+      published: publishedOf(r, dates),
       id: r.id,
       title: r.title,
       url: r.source_url || '',
       date: kstDate(r.created_at),
       similarity: Math.round((r.similarity || 0) * 100) / 100
     }));
+    // 관련도 순서, 차이가 0.02 이내로 비슷하면 최근에 쓴 글을 앞으로
+    posts.sort((a, b) => Math.abs(a.similarity - b.similarity) <= 0.02
+      ? String(b.published || '').localeCompare(String(a.published || ''))
+      : b.similarity - a.similarity);
     return { status: 200, json: { posts } };
   }
 
@@ -97,7 +103,9 @@ export async function handleNewsRequest(body, env) {
     const rows = await sbGet(env, `my_insights?select=id,created_at,title,summary,tags,source_url,content_final&id=eq.${id}&limit=1`);
     if (!rows.length) return { status: 404, json: { error: '글을 찾을 수 없습니다.' } };
     const r = rows[0];
+    const dates = await getPublishDates(ctx);
     return { status: 200, json: { post: {
+      published: publishedOf(r, dates),
       id: r.id, title: r.title, url: r.source_url || '', date: kstDate(r.created_at),
       summary: r.summary || '', tags: r.tags || [],
       content: String(r.content_final || '').replace(/[\u200B\uFEFF]/g, '')

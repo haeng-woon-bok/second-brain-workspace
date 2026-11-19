@@ -8,6 +8,7 @@ import { handleReview } from './review.js';
 import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './drafts.js';
 import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
+import { getPublishDates, sortByPublished } from './published.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
@@ -63,13 +64,15 @@ export default {
       let latestDate = null;
       let latestItems = null;
       let latestThemes = null;
+      // 네이버 발행일은 다른 조회와 동시에 (6시간 캐시)
+      const publishDatesPromise = getPublishDates(ctx);
 
       try {
         const sbRes = await fetch(
           `${env.SUPABASE_URL}/rest/v1/my_insights?select=${ARCHIVE_COLUMNS}&order=id.desc&limit=${ARCHIVE_LIMIT}`,
           { headers: supabaseHeaders(env) }
         );
-        if (sbRes.ok) archives = await sbRes.json();
+        if (sbRes.ok) archives = sortByPublished(await sbRes.json(), await publishDatesPromise);
       } catch (e) {}
 
       try {
@@ -104,7 +107,7 @@ export default {
 
     if (NEWS_TYPES.has(body.type)) {
       try {
-        const { status, json } = await handleNewsRequest(body, env);
+        const { status, json } = await handleNewsRequest(body, env, ctx);
         return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);

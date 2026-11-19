@@ -406,7 +406,8 @@
         if (data.archives && Array.isArray(data.archives)) {
           ARCHIVES_CACHE = data.archives.map(item => ({
             id: item.id,
-            date: formatKstDate(item.created_at),
+            // 네이버 실제 발행일 (못 받으면 DB로 가져온 날)
+            date: item.published || formatKstDate(item.created_at),
             title: decodeEntities(item.title || '제목 없음'),
             summary: decodeEntities(item.summary || '📌 핵심 관점 요약 없음'),
             tags: Array.isArray(item.tags) && item.tags.length ? item.tags : ['#블로그아카이브'],
@@ -907,7 +908,7 @@
         reader.innerHTML = `
           <button class="link" onclick="closeReader()">← 목록으로</button>
           <h3>${escapeHtml(decodeEntities(p.title))}</h3>
-          <div class="muted mono">${escapeHtml((p.date || '').replace(/-/g, '.'))}${p.url ? ` · <a class="link" href="${escapeHtml(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">네이버에서 보기 ↗</a>` : ''}</div>
+          <div class="muted mono">${escapeHtml((p.published || p.date || '').replace(/-/g, '.'))}${p.url ? ` · <a class="link" href="${escapeHtml(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">네이버에서 보기 ↗</a>` : ''}</div>
           ${d ? `<div class="sum">${escapeHtml(d.summary)}</div>` : ''}
           <div class="body">${escapeHtml(p.content.replace(/\n{3,}/g, '\n\n').trim())}</div>`;
         reader.scrollTop = 0;
