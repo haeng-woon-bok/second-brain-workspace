@@ -62,6 +62,7 @@ export default {
       let latestIndices = null;
       let latestDate = null;
       let latestItems = null;
+      let latestThemes = null;
 
       try {
         const sbRes = await fetch(
@@ -83,12 +84,13 @@ export default {
             latestBriefing = rawPayload.briefing || null;
             latestIndices = rawPayload.indices || null;
             latestItems = rawPayload.items || null;
+            latestThemes = rawPayload.themes || null;
             latestDate = kstDate(newsRows[0].created_at);
           }
         }
       } catch (e) {}
 
-      return jsonResponse({ news: latestNews, briefing: latestBriefing, archives, indices: latestIndices, items: latestItems, news_date: latestDate });
+      return jsonResponse({ news: latestNews, briefing: latestBriefing, archives, indices: latestIndices, items: latestItems, themes: latestThemes, news_date: latestDate });
     }
 
     if (body.type === 'post_digests') {

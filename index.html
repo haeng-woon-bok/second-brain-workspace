@@ -183,6 +183,9 @@
     .reader .sum { font-size:12.5px; color:var(--sub); background:var(--sunken); border-radius:var(--radius); padding:10px 12px; margin:12px 0; line-height:1.65; }
     .reader .body { font-size:13.5px; line-height:1.85; white-space:pre-line; }
     .news-item .m { font-size:11.5px; color:var(--faint); margin-top:2px; }
+    .themes { font-size:12px; color:var(--sub); margin:10px 0 2px; line-height:1.7; }
+    .themes .tl { color:var(--faint); margin-right:4px; }
+    .themes .th { display:inline-block; border:1px solid var(--line); border-radius:2px; padding:0 6px; margin:0 4px 4px 0; color:var(--ink); cursor:help; }
     .empty { text-align:center; color:var(--faint); font-size:12.5px; padding:48px 0; }
 
     /* ===== 토스트 ===== */
@@ -231,6 +234,7 @@
           <button onclick="switchSector('realestate')" id="tab-realestate" class="tab">부동산</button>
           <button onclick="switchSector('ai')" id="tab-ai" class="tab">AI</button>
         </div>
+        <div id="news-themes" class="themes hidden"></div>
         <div id="news-list-container"></div>
       </div>
     </section>
@@ -389,6 +393,7 @@
         currentNewsDate = data.news_date || null;
         if (data.briefing || data.news) {
           parseAndSetNewsData(data.news, data.briefing, data.items);
+          NEWS_THEMES = data.themes || null;
           stampNewsDate(currentNewsDate);
           switchSector(currentSector);
         }
@@ -522,7 +527,7 @@
         const fromItems = items && Array.isArray(items[ITEM_SECTOR_KEYS[s]])
           ? items[ITEM_SECTOR_KEYS[s]].map((it, idx) => ({
               id: `${s}_item_${idx}`, sector: SECTOR_NAMES[s], title: String(it.title || ''), link: String(it.link || '#'),
-              source: String(it.source || ''), summary: String(it.summary || ''), idea: String(it.idea || '')
+              source: String(it.source || ''), subtopic: String(it.subtopic || ''), summary: String(it.summary || ''), idea: String(it.idea || '')
             }))
           : null;
         const base = (fromItems && fromItems.length ? fromItems : fromRaw[s]).map(it => ({ ...it, kind: 'headline' }));
@@ -538,6 +543,17 @@
       });
     }
 
+    // 오늘의 테마: 파이프라인이 내 최근 글 키워드 + 그날 헤드라인으로 정한 섹터별 추가 검색 주제
+    let NEWS_THEMES = null;
+    function renderNewsThemes(sector) {
+      const el = document.getElementById('news-themes');
+      const list = (NEWS_THEMES && NEWS_THEMES[ITEM_SECTOR_KEYS[sector]]) || [];
+      el.classList.toggle('hidden', !list.length);
+      if (!list.length) return;
+      el.innerHTML = '<span class="tl">오늘의 테마</span>' + list.map(t =>
+        `<span class="th" title="${escapeHtml((t.source === 'pinned' ? '고정 테마' : '자동 선택') + (t.reason ? ' · ' + t.reason : '') + ' · 검색어: ' + (t.query || ''))}">${escapeHtml(t.name)}</span>`).join('');
+    }
+
     function switchSector(sector) {
       currentSector = sector;
       SECTOR_KEYS.forEach(s => {
@@ -545,6 +561,7 @@
         if (btn) btn.className = s === sector ? 'tab on' : 'tab';
       });
 
+      renderNewsThemes(sector);
       const container = document.getElementById('news-list-container');
       if (!container) return;
       container.innerHTML = '';
@@ -564,7 +581,7 @@
           <span class="no">${String(i + 1).padStart(2, '0')}</span>
           <div>
             <div class="t">${escapeHtml(item.title)}</div>
-            ${item.source ? `<div class="m">${escapeHtml(item.source)}</div>` : ''}
+            ${item.source || item.subtopic ? `<div class="m">${escapeHtml([item.source, item.subtopic].filter(Boolean).join(' · '))}</div>` : ''}
           </div>`;
         container.appendChild(row);
       });
@@ -716,6 +733,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         parseAndSetNewsData(data.news, data.briefing, data.items);
+          NEWS_THEMES = data.themes || null;
         stampNewsDate(date);
         updateNewsDateLabel();
         switchSector(currentSector);

@@ -25,7 +25,7 @@ async function sbGet(env, path) {
 
 export function splitPayload(row) {
   const p = (row && row.sector_news) || {};
-  return { news: p.news || p, briefing: p.briefing || null, indices: p.indices || null, items: p.items || null };
+  return { news: p.news || p, briefing: p.briefing || null, indices: p.indices || null, items: p.items || null, themes: p.themes || null };
 }
 
 // 문단 고르기: 질의와 글자쌍이 가장 많이 겹치는 문단 (임베딩은 글 단위라 문단은 간단한 겹침으로 선택)
