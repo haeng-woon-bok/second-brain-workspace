@@ -85,11 +85,28 @@
     .clamp2 { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
     .clamp3 { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 
-    /* ===== 좌측: 지표 · 뉴스 ===== */
-    .idx { display:grid; grid-template-columns:1fr auto auto; gap:4px 12px; font-size:13px; margin-top:8px; }
-    .idx .k { color:var(--sub); }
-    .idx .v { font-family:var(--mono); font-size:12.5px; text-align:right; }
-    .idx .c { font-family:var(--mono); font-size:12px; text-align:right; color:var(--sub); min-width:64px; }
+    /* ===== 좌측: 달력 · 뉴스 ===== */
+    .cal-head { display:flex; justify-content:space-between; align-items:baseline; }
+    .cal-nav button { color:var(--faint); font-size:15px; padding:0 6px; }
+    .cal-nav button:hover { color:var(--ink); }
+    .cal { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; font-size:12px; margin-top:8px; }
+    .cal .dow { color:var(--faint); font-size:11px; padding-bottom:4px; }
+    .cal .d { padding:5px 0; border-radius:var(--radius); color:var(--faint); position:relative; font-family:var(--mono); }
+    .cal button.d { color:var(--ink); }
+    .cal button.d::after { content:''; position:absolute; left:50%; bottom:2px; width:3px; height:3px; border-radius:50%; background:var(--sub); transform:translateX(-50%); }
+    .cal button.d:hover { background:var(--sunken); }
+    .cal .d.sel, .cal .d.sel:hover { background:var(--ink); color:var(--panel); font-weight:600; }
+    .cal .d.sel::after { background:var(--panel); }
+    .cal .d.today { outline:1px solid var(--line); }
+    .group-h { font-size:11px; color:var(--faint); margin:14px 0 2px; display:flex; justify-content:space-between; }
+    .attached { font-size:12.5px; color:var(--sub); display:flex; gap:8px; align-items:center; border-left:2px solid var(--accent); padding:2px 0 2px 10px; }
+    .attached b { color:var(--ink); font-weight:600; }
+    a.btn, a.btn-sec { text-decoration:none; }
+    .related { white-space:normal; margin-top:2px; display:flex; flex-direction:column; gap:10px; }
+    .related .r-t { font-size:13px; font-weight:600; }
+    .related .r-t a { text-decoration:none; } .related .r-t a:hover { text-decoration:underline; }
+    .related .r-d { font-family:var(--mono); font-size:11px; color:var(--faint); margin-left:6px; font-weight:400; }
+    .related .r-p { font-size:12.5px; color:var(--sub); border-left:2px solid var(--line); padding-left:10px; margin-top:3px; line-height:1.6; }
     .tabs { display:flex; border-bottom:1px solid var(--line); margin-top:6px; }
     .tab { padding:6px 0; margin-right:18px; font-size:13px; color:var(--sub); border-bottom:2px solid transparent; margin-bottom:-1px; }
     .tab:hover { color:var(--ink); }
@@ -191,18 +208,15 @@
     <!-- 좌측: 지표 · 섹터 뉴스 -->
     <section class="col left">
       <div>
-        <div class="label">시장 지표</div>
-        <div class="idx">
-          <span class="k">코스피</span><span id="idx-kospi-val" class="v">-</span><span id="idx-kospi-change" class="c">-</span>
-          <span class="k">코스닥</span><span id="idx-kosdaq-val" class="v">-</span><span id="idx-kosdaq-change" class="c">-</span>
-          <span class="k">S&amp;P 500</span><span id="idx-sp500-val" class="v">-</span><span id="idx-sp500-change" class="c">-</span>
-          <span class="k">나스닥</span><span id="idx-nasdaq-val" class="v">-</span><span id="idx-nasdaq-change" class="c">-</span>
-          <span class="k">원/달러</span><span id="idx-usdkrw-val" class="v">-</span><span id="idx-usdkrw-change" class="c">-</span>
+        <div class="cal-head">
+          <span class="h2" id="cal-title">-</span>
+          <span class="cal-nav"><button onclick="moveCalMonth(-1)" title="이전 달">‹</button><button onclick="moveCalMonth(1)" title="다음 달">›</button></span>
         </div>
+        <div class="cal" id="calendar"></div>
       </div>
 
       <div>
-        <div class="label">오늘의 뉴스</div>
+        <div class="label" id="news-date-label">뉴스</div>
         <div class="tabs">
           <button onclick="switchSector('stock')" id="tab-stock" class="tab on">증시</button>
           <button onclick="switchSector('crypto')" id="tab-crypto" class="tab">가상자산</button>
@@ -218,11 +232,14 @@
       <div id="selected-news-box" class="card newscard hidden">
         <div class="top">
           <span id="ref-news-sector" class="chip">섹터</span>
-          <button onclick="clearSelectedNews()" class="link">선택 해제 ✕</button>
+          <button onclick="closeNewsPreview()" class="link">닫기 ✕</button>
         </div>
         <div id="ref-news-title-wrapper"></div>
         <dl class="kv" id="ref-news-summary"></dl>
+        <div class="row" style="margin-top:14px" id="ref-news-actions"></div>
       </div>
+
+      <div id="attached-news" class="attached hidden"></div>
 
       <input id="draft-title" type="text" class="title-in" placeholder="제목 또는 핵심 주제" oninput="handleDraftInput()" />
 
@@ -360,21 +377,17 @@
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
-        // 1. 주요 증시 지표 DOM 업데이트
-        if (data.indices) {
-          ['kospi', 'kosdaq', 'sp500', 'nasdaq', 'usdkrw'].forEach(key => {
-            const item = data.indices[key];
-            if (!item) return;
-            document.getElementById(`idx-${key}-val`).textContent = item.val;
-            document.getElementById(`idx-${key}-change`).textContent = item.change;
-          });
-        }
-
-        // 2. 4개 섹터 뉴스 및 AI 요약 반영
+        // 1. 가장 최근 뉴스 + 달력
+        currentNewsDate = data.news_date || null;
         if (data.briefing || data.news) {
           parseAndSetNewsData(data.news, data.briefing);
+          stampNewsDate(currentNewsDate);
           switchSector(currentSector);
         }
+        if (currentNewsDate) calMonth = currentNewsDate.slice(0, 7);
+        updateNewsDateLabel();
+        renderCalendar();
+        loadNewsDates();
 
         // 3. 아카이브 캐시 저장
         if (data.archives && Array.isArray(data.archives)) {
@@ -465,7 +478,8 @@
             sector: sectorName,
             title,
             link,
-            summary: summary.slice(0, 150) || '요약 정보가 없습니다.',
+            // 구글 뉴스 RSS 요약은 대개 "제목 + 언론사"라 제목과 같으면 비운다
+            summary: titleKey(summary).startsWith(titleKey(title).slice(0, 20)) ? '' : summary.slice(0, 150),
             idea: '',
             keywords: [sectorName, '실시간뉴스']
           };
@@ -479,13 +493,23 @@
       return result;
     }
 
+    // 제목 비교용 정규화 (브리핑 기사와 원본 헤드라인 중복 판별)
+    function titleKey(t) {
+      return String(t || '').replace(/\s*-\s*[^-]+$/, '').replace(/[^0-9A-Za-z가-힣]/g, '').toLowerCase();
+    }
+
+    // 섹터별 목록 = AI 브리핑 기사(글감 제안 포함) + 나머지 헤드라인(최대 10개까지)
     function parseAndSetNewsData(rawNews, briefingText) {
       const fromBriefing = briefingText ? parseBriefing(briefingText) : null;
       const fromRaw = parseRawNews(rawNews);
-
-      // 섹터별로 AI 브리핑 우선, 비어 있으면 원본 뉴스로 보완
       SECTOR_KEYS.forEach(s => {
-        NEWS_DATA[s] = (fromBriefing && fromBriefing[s].length) ? fromBriefing[s] : fromRaw[s];
+        const brief = (fromBriefing ? fromBriefing[s] : []).map(it => ({ ...it, kind: 'brief' }));
+        const links = new Set(brief.map(b => b.link));
+        const titles = new Set(brief.map(b => titleKey(b.title)));
+        const more = fromRaw[s]
+          .filter(r => !links.has(r.link) && !titles.has(titleKey(r.title)))
+          .map(it => ({ ...it, kind: 'headline' }));
+        NEWS_DATA[s] = brief.concat(more).slice(0, Math.max(10, brief.length));
       });
     }
 
@@ -506,44 +530,210 @@
         return;
       }
 
-      list.forEach((item, i) => {
-        const isSelected = selectedNews && selectedNews.id === item.id;
-        const row = document.createElement('div');
-        row.className = `news-item${isSelected ? ' on' : ''}`;
-        row.onclick = () => selectNewsCard(item);
-        row.innerHTML = `
-          <span class="no">${String(i + 1).padStart(2, '0')}</span>
-          <div>
-            <div class="t">${escapeHtml(item.title)}</div>
-            <div class="s clamp2">${escapeHtml(item.summary)}</div>
-          </div>`;
-        container.appendChild(row);
-      });
+      const brief = list.filter(i => i.kind === 'brief');
+      const more = list.filter(i => i.kind !== 'brief');
+      const addGroup = (label, items, startNo) => {
+        if (!items.length) return;
+        if (brief.length) container.insertAdjacentHTML('beforeend', `<div class="group-h"><span>${label}</span><span>${items.length}</span></div>`);
+        items.forEach((item, i) => {
+          const row = document.createElement('div');
+          const isOn = previewNewsItem && previewNewsItem.id === item.id;
+          row.className = `news-item${isOn ? ' on' : ''}`;
+          row.onclick = () => previewNews(item);
+          row.innerHTML = `
+            <span class="no">${String(startNo + i).padStart(2, '0')}</span>
+            <div>
+              <div class="t">${escapeHtml(item.title)}</div>
+              ${item.summary ? `<div class="s clamp2">${escapeHtml(item.summary)}</div>` : ''}
+            </div>`;
+          container.appendChild(row);
+        });
+      };
+      addGroup('AI 브리핑 · 글감 제안 포함', brief, 1);
+      addGroup('그 밖의 헤드라인', more, brief.length + 1);
     }
 
-    function selectNewsCard(item, silent = false) {
-      selectedNews = item;
-      switchSector(currentSector);
-      document.getElementById('selected-news-box').classList.remove('hidden');
-      document.getElementById('ref-news-sector').textContent = item.sector;
+    // ---------- 뉴스 카드: 미리보기 → "이 뉴스로 글쓰기"로 초안에 연결 ----------
+    let previewNewsItem = null;
+    const relatedCache = new Map();
 
-      const titleWrapper = document.getElementById('ref-news-title-wrapper');
+    function isAttached(item) {
+      return !!(selectedNews && item && (selectedNews.link && selectedNews.link === item.link || selectedNews.title === item.title));
+    }
+
+    function previewNews(item) {
+      previewNewsItem = item;
+      switchSector(currentSector);
+      renderNewsCard();
+      loadRelatedPosts(item);
+      document.getElementById('selected-news-box').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    function closeNewsPreview() {
+      previewNewsItem = null;
+      document.getElementById('selected-news-box').classList.add('hidden');
+      switchSector(currentSector);
+      renderAttachedNews();
+    }
+
+    function renderNewsCard() {
+      const item = previewNewsItem;
+      const box = document.getElementById('selected-news-box');
+      if (!item) { box.classList.add('hidden'); return; }
+      box.classList.remove('hidden');
+      document.getElementById('ref-news-sector').textContent = `${item.sector}${item.date ? ' · ' + item.date.slice(5).replace('-', '.') : ''}`;
+
       const href = safeUrl(item.link);
-      titleWrapper.innerHTML = `<h3>${escapeHtml(item.title)}${href !== '#'
-        ? ` <a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="link" style="font-family:var(--sans);font-weight:400">원문 ↗</a>` : ''}</h3>`;
+      document.getElementById('ref-news-title-wrapper').innerHTML = `<h3>${escapeHtml(item.title)}</h3>`;
+
+      const rel = relatedCache.get(item.id);
+      const relHtml = rel === undefined
+        ? '<span class="muted">관련 글을 찾는 중…</span>'
+        : rel === null ? '<span class="muted">관련 글을 불러오지 못했습니다.</span>'
+        : !rel.length ? '<span class="muted">비슷한 주제의 과거 글이 없습니다.</span>'
+        : `<div class="related">${rel.map(p => `
+            <div>
+              <div class="r-t">${p.url ? `<a href="${escapeHtml(safeUrl(p.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(decodeEntities(p.title))}</a>` : escapeHtml(decodeEntities(p.title))}<span class="r-d">${escapeHtml((p.date || '').replace(/-/g, '.'))}</span></div>
+              ${p.passage ? `<div class="r-p">${escapeHtml(p.passage)}</div>` : ''}
+            </div>`).join('')}</div>`;
 
       document.getElementById('ref-news-summary').innerHTML =
-        `<dt>핵심 요약</dt><dd>${escapeHtml(item.summary)}</dd>` +
-        (item.idea ? `<dt>글감 제안</dt><dd>${inlineMarkdown(item.idea)}</dd>` : '');
+        (item.summary ? `<dt>${item.kind === 'brief' ? '핵심 요약' : '요약'}</dt><dd>${escapeHtml(item.summary)}</dd>` : '') +
+        (item.idea ? `<dt>글감 제안</dt><dd>${inlineMarkdown(item.idea)}</dd>` : '') +
+        `<dt>내 과거 글</dt><dd>${relHtml}</dd>`;
 
+      const attached = isAttached(item);
+      document.getElementById('ref-news-actions').innerHTML =
+        (attached
+          ? `<button class="btn-sec" onclick="clearSelectedNews()">글 참고 해제</button><span class="muted">이 뉴스를 참고해 글을 쓰는 중</span>`
+          : `<button class="btn" onclick="attachPreviewNews()">이 뉴스로 글쓰기</button>`) +
+        (href !== '#' ? `<a class="btn-sec" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">원문 ↗</a>` : '');
+      renderAttachedNews();
+    }
+
+    async function loadRelatedPosts(item) {
+      if (relatedCache.has(item.id)) return;
+      try {
+        const res = await fetch(WORKER_URL, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'related_posts', text: `${item.title}\n${item.summary}`, count: 3 })
+        });
+        const data = await res.json().catch(() => ({}));
+        relatedCache.set(item.id, res.ok ? (data.posts || []) : null);
+      } catch (e) {
+        relatedCache.set(item.id, null);
+      }
+      if (previewNewsItem && previewNewsItem.id === item.id) renderNewsCard();
+    }
+
+    function attachPreviewNews() {
+      if (!previewNewsItem) return;
+      selectNewsCard(previewNewsItem);
+      const memo = document.getElementById('draft-memo');
+      if (!memo.value.trim()) memo.focus();
+      showToast('이 뉴스를 참고해 초안을 만듭니다.');
+    }
+
+    // 초안에 연결된 뉴스 (생성 프롬프트와 DB 저장에 쓰임)
+    function selectNewsCard(item, silent = false) {
+      selectedNews = item;
+      renderNewsCard();
+      renderAttachedNews();
       if (!silent) scheduleDbSave();
     }
 
     function clearSelectedNews() {
       selectedNews = null;
-      document.getElementById('selected-news-box').classList.add('hidden');
-      switchSector(currentSector);
+      renderNewsCard();
+      renderAttachedNews();
       scheduleDbSave();
+    }
+
+    // 카드를 닫았거나 다른 뉴스를 보고 있을 때, 지금 글에 연결된 뉴스를 제목 위에 한 줄로
+    function renderAttachedNews() {
+      const el = document.getElementById('attached-news');
+      const show = selectedNews && !(previewNewsItem && isAttached(previewNewsItem));
+      el.classList.toggle('hidden', !show);
+      if (show) el.innerHTML = `<span>참고 뉴스</span><b class="clamp2" style="flex:1">${escapeHtml(selectedNews.title)}</b><button class="link" onclick="clearSelectedNews()">해제 ✕</button>`;
+    }
+
+    // ---------- 달력 ----------
+    let NEWS_DATES = new Set();
+    let currentNewsDate = null;   // 지금 보고 있는 뉴스의 날짜 (KST, YYYY-MM-DD)
+    let calMonth = null;          // 'YYYY-MM'
+
+    function todayKst() { return formatKstDate(new Date().toISOString()); }
+
+    async function loadNewsDates() {
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'news_dates' }) });
+        const data = await res.json();
+        NEWS_DATES = new Set(data.dates || []);
+      } catch (e) { console.warn('news_dates 실패:', e); }
+      renderCalendar();
+    }
+
+    // 날짜가 달라도 뉴스 id가 겹치지 않도록 날짜를 붙인다
+    function stampNewsDate(date) {
+      if (!date) return;
+      SECTOR_KEYS.forEach(s => NEWS_DATA[s] = NEWS_DATA[s].map(it => ({ ...it, id: `${date}_${it.id}`, date })));
+    }
+
+    function moveCalMonth(delta) {
+      const [y, m] = (calMonth || todayKst().slice(0, 7)).split('-').map(Number);
+      const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+      calMonth = d.toISOString().slice(0, 7);
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const el = document.getElementById('calendar');
+      if (!calMonth) calMonth = todayKst().slice(0, 7);
+      const [y, m] = calMonth.split('-').map(Number);
+      document.getElementById('cal-title').textContent = `${y}년 ${m}월`;
+      const firstDow = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+      const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const today = todayKst();
+      let html = '일월화수목금토'.split('').map(d => `<div class="dow">${d}</div>`).join('');
+      html += '<div></div>'.repeat(firstDow);
+      for (let d = 1; d <= days; d++) {
+        const date = `${calMonth}-${String(d).padStart(2, '0')}`;
+        const cls = ['d', date === currentNewsDate ? 'sel' : '', date === today ? 'today' : ''].join(' ').trim();
+        html += NEWS_DATES.has(date)
+          ? `<button class="${cls}" onclick="selectNewsDate('${date}')" title="${date} 뉴스 보기">${d}</button>`
+          : `<div class="${cls}">${d}</div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    function updateNewsDateLabel() {
+      const el = document.getElementById('news-date-label');
+      if (!currentNewsDate) { el.textContent = '뉴스'; return; }
+      const [y, m, d] = currentNewsDate.split('-').map(Number);
+      const dow = '일월화수목금토'[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+      el.textContent = `${m}월 ${d}일 (${dow}) 뉴스${currentNewsDate === todayKst() ? ' · 오늘' : ''}`;
+    }
+
+    async function selectNewsDate(date) {
+      if (date === currentNewsDate) return;
+      const prev = currentNewsDate;
+      currentNewsDate = date;
+      renderCalendar();
+      document.getElementById('news-list-container').innerHTML = '<div class="empty">불러오는 중…</div>';
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'news_by_date', date }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        parseAndSetNewsData(data.news, data.briefing);
+        stampNewsDate(date);
+        updateNewsDateLabel();
+        switchSector(currentSector);
+      } catch (e) {
+        currentNewsDate = prev;
+        renderCalendar();
+        switchSector(currentSector);
+        showToast(`⚠️ 뉴스를 불러오지 못했습니다: ${e.message}`);
+      }
     }
 
     function renderArchiveList(showAll = false) {
@@ -1114,13 +1304,11 @@
         lastGeneratedBody = d.body || '';
         lastAiRatio = typeof d.ai_ratio === 'number' ? d.ai_ratio : null;
         renderDraftMeta(null);
-        if (d.news && d.news.title) {
-          selectNewsCard({ id: `saved_${d.id}`, sector: '저장된 뉴스', title: d.news.title, summary: d.news.summary || '', link: d.news.link || '#', idea: '' }, true);
-        } else {
-          selectedNews = null;
-          document.getElementById('selected-news-box').classList.add('hidden');
-          switchSector(currentSector);
-        }
+        selectedNews = (d.news && d.news.title)
+          ? { id: `saved_${d.id}`, sector: '저장된 뉴스', title: d.news.title, summary: d.news.summary || '', link: d.news.link || '#', idea: '' }
+          : null;
+        renderNewsCard();
+        renderAttachedNews();
         // 가장 최근 첨삭 결과 복원
         const last = (reviews || [])[0];
         reviewAcceptedChars = 0;
