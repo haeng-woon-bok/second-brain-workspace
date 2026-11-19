@@ -6,7 +6,7 @@
 // - 문체 수치(줄 길이, 어미 비율, 이모지)는 모델이 아니라 여기서 직접 계산
 
 import { searchPastInsights, generateJson } from './lib.js';
-import { DEFAULT_PROFILE, getStyleProfile, isMetaLine, splitSentences, classifyEnding, cleanLine } from './style.js';
+import { DEFAULT_PROFILE, getStyleProfile, isMetaLine, splitSentences, classifyEnding, cleanLine, stripFormatMarks } from './style.js';
 
 // 필자 기준선: style_profile(자동 계산, 24시간마다 갱신)에서 가져옴. 없으면 DEFAULT_PROFILE
 const toBaseline = (p = DEFAULT_PROFILE) => ({
@@ -50,7 +50,8 @@ const SCHEMA = {
 // 첨삭 대상에서 제외할 줄(해시태그 줄, URL, 연결 글 라벨)은 style.js isMetaLine
 export function computeStyleStats(body, profile = DEFAULT_PROFILE) {
   const BASELINE = toBaseline(profile);
-  const lines = String(body).split('\n').map(cleanLine).filter(l => l.length > 1 && !isMetaLine(l));
+  const lines = stripFormatMarks(String(body).split('\n').filter(l => !isMetaLine(l)).join('\n'))
+    .split('\n').map(cleanLine).filter(l => l.length > 1 && !isMetaLine(l));
   const text = lines.join('\n');
   // 어미 판별 전에 문장 끝 이모지·기호 제거 ("봐요. 😀" → "봐요.")
   const sentences = splitSentences(text);
@@ -65,7 +66,8 @@ export function computeStyleStats(body, profile = DEFAULT_PROFILE) {
   const avgLine = lines.length ? Math.round(lines.reduce((a, l) => a + l.length, 0) / lines.length) : 0;
   const longLines = lines.filter(l => l.length > 60).length;
   const emoji = (text.match(/\p{Extended_Pictographic}/gu) || []).filter(e => e !== '✍').length;
-  const markdown = (text.match(/^\s*(#{1,6}\s|[-*]\s|>\s)|\*\*[^*\n]+\*\*/gm) || []).length;
+  // 네이버 서식 표시(##, **, ==, ---)는 허용. 그 밖의 마크다운(# 제목, - 목록, > 인용)만 셈
+  const markdown = (String(body).match(/^\s*(#\s|#{4,6}\s|[-*]\s|>\s)/gm) || []).length;
   const gaps = (String(body).match(/\[✍️ 보충 필요/g) || []).length;
 
   const notes = [];
@@ -138,14 +140,17 @@ function buildPrompt(req, samples, stats, profile = DEFAULT_PROFILE) {
    - 문단 순서가 어색하거나 같은 말을 반복하는 곳
 2. style (필자 문체 일관성)
    - 필자는 합쇼체 "~습니다/~ㅂ니다"가 기본. "~는데요/~인데요"(도입·전환)와 독자 질문 "~신가요?/~을까요?"는 필자 말투가 맞음
-   - 평서 반말 "~한다./~이다./~있다."는 거의 쓰지 않음(3%) → 이런 문장은 style로 지적. 이모지·마크다운 기호도 쓰지 않음
+   - 평서 반말 "~한다./~이다./~있다."는 거의 쓰지 않음(3%) → 이런 문장은 style로 지적. 이모지도 쓰지 않음
+   - 본문의 ==문장==(노란 형광펜), **문장**(굵게), "## "(소제목), "---"(구분선), "관련글 : [제목](주소)"는 네이버 서식 표시이니 기호 자체를 지적하지 마세요.
+     형광펜이 한 문단에 너무 많거나 핵심이 아닌 곳에 칠해졌으면 readability로 지적해도 됩니다.
    - 도입은 "저는 ~했는데요."처럼 개인 맥락, 마무리는 "여러분"에게 건네는 말
    - 아래 [필자 글]과 말투가 크게 다른 문단
 3. readability (가독성)
    - 너무 긴 문장, 모호한 지시어("이것", "그런"), 중복 표현, 한 문단에 주제가 여러 개
 
 # 규칙
-- target에는 [본문]의 문장이나 문단을 **글자 그대로** 복사하세요. 한 글자라도 바꾸면 코멘트가 버려집니다.
+- target에는 [본문]의 문장이나 문단을 **글자 그대로** 복사하세요(==, ** 같은 서식 표시 포함). 한 글자라도 바꾸면 코멘트가 버려집니다.
+- suggestion에서도 원래 문장에 있던 서식 표시는 유지하세요.
 - suggestion은 target을 대체할 문단 단위 수정안입니다. target 길이의 2배를 넘기지 말고, [본문]과 [원래 초안]에 없는 사실·수치·경험을 새로 넣지 마세요. 지적만 하고 고칠 필요가 없으면 suggestion을 빈 문자열로 두세요.
 - 해시태그 줄, URL, "이전글 :"/"관련글 :" 줄, "[✍️ 보충 필요: ...]" 표시는 첨삭하지 마세요.
 - 코멘트는 중요한 것부터 최대 ${MAX_COMMENTS}개. 문제가 없으면 적게 다세요. 칭찬용 코멘트는 달지 마세요.

@@ -24,7 +24,19 @@ export const cleanLine = (l) => String(l).replace(/[​﻿ ]/g, ' ').trim();
 export function isMetaLine(line) {
   const t = line.trim();
   return /^https?:\/\//.test(t) || /^(www\.)?[a-z0-9-]+\.(com|net|kr|co\.kr|org)\b/i.test(t)
-    || /^(이전글|관련글)\s*:?\s*$/.test(t) || /^(#[^\s#]+\s*){2,}$/.test(t);
+    || /^(이전글|관련글)\s*:?\s*$/.test(t) || /^(#[^\s#]+\s*){2,}$/.test(t)
+    || /^(이전글|관련글|다음글)\s*:\s*\[[^\]]+\]\(\S+\)\s*$/.test(t) || /^-{3,}$/.test(t);
+}
+
+// 웹 본문의 네이버 서식 표시(==형광펜==, **굵게**, ## 소제목, --- 구분선, [제목](주소))를 지운 글
+// naver-format.js(웹)와 같은 규칙. 문체 수치 계산용
+export function stripFormatMarks(text) {
+  return String(text || '').split('\n').map(line => line
+    .replace(/^\s*#{2,3}\s+/, '')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1')
+    .replace(/\*\*([^*\n]+?)\*\*/g, '$1')
+    .replace(/==([^=\n]+?)==/g, '$1')
+  ).join('\n');
 }
 
 export function splitSentences(text) {
@@ -144,6 +156,6 @@ export function styleBaselineText(p = DEFAULT_PROFILE) {
 - 연결 글: 글의 ${Math.round(h.prev_link * 100)}%에 "이전글 :" 또는 "관련글 :" 뒤에 과거 글 제목과 링크를 붙임
 - 관점: "개인적으로", "제 생각에는" 으로 필자의 관점을 분명히 밝힘 (글의 ${Math.round(h.personal * 100)}%)
 - 마무리: "여러분"에게 말을 건네며 끝냄 (글의 ${Math.round(h.reader * 100)}%)
-- 이모지(글당 ${h.emoji_per_post}개), 마크다운 기호(#, **, -, >)는 본문에 쓰지 않음
+- 이모지(글당 ${h.emoji_per_post}개)는 쓰지 않음. 목록 기호(-, >)도 쓰지 않음. 서식은 아래 "서식" 규칙의 표시만 사용
 - 필자: 두 아이(행운이, 행복이)를 둔 가장, 재개발·재테크·AI를 공부하며 기록하는 블로거`;
 }
