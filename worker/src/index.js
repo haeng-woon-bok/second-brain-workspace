@@ -10,6 +10,7 @@ import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
 import { handleImageChart } from './chart.js';
+import { IMAGE_TYPES, handleImageRequest } from './images.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
@@ -110,6 +111,16 @@ export default {
       try {
         const { status, json } = await handleNewsRequest(body, env, ctx);
         return jsonResponse(json, status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 502);
+      }
+    }
+
+    if (IMAGE_TYPES.has(body.type)) {
+      try {
+        const r = await handleImageRequest(body, env, ctx);
+        if (r.binary) return new Response(r.binary, { status: 200, headers: { ...corsHeaders, 'Content-Type': r.contentType, 'Cache-Control': 'private, max-age=3600' } });
+        return jsonResponse(r.json, r.status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
       }

@@ -164,6 +164,22 @@
     .slot .d { flex:1; min-width:180px; color:var(--ink); }
     .slot .h { font-size:12px; color:var(--faint); }
 
+    /* 내 이미지 보관함 */
+    .lib .box { display:flex; flex-direction:column; gap:12px; }
+    .lib .search { display:flex; gap:8px; }
+    .lib .search input { flex:1; font:inherit; font-size:14px; color:var(--ink); background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:7px 10px; }
+    .lib .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
+    .lib .im { border:1px solid var(--line); border-radius:var(--radius); background:var(--sunken); cursor:pointer; display:flex; flex-direction:column; overflow:hidden; text-align:left; padding:0; font:inherit; color:inherit; }
+    .lib .im:hover { border-color:var(--sub); }
+    .lib .im .ph { aspect-ratio:4/3; background:#e9e3d6; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .lib .im img { width:100%; height:100%; object-fit:contain; }
+    .lib .im .tx { padding:8px 10px; font-size:12.5px; line-height:1.5; display:flex; flex-direction:column; gap:4px; }
+    .lib .im .ds { color:var(--ink); }
+    .lib .im .tg { color:var(--sub); font-size:11.5px; }
+    .lib .im .pt { color:var(--faint); font-size:11.5px; }
+    .lib .chips { display:flex; gap:6px; flex-wrap:wrap; font-size:12px; }
+    .lib .chips button { font:inherit; border:1px solid var(--line); background:transparent; color:var(--sub); border-radius:2px; padding:1px 8px; cursor:pointer; }
+
     /* 도표 만들기 */
     .modal { position:fixed; inset:0; background:rgba(20,18,15,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; z-index:50; overflow:auto; }
     .modal.hidden { display:none; }
@@ -314,6 +330,7 @@
         <button class="fb" onclick="fmtHeading()" title="커서가 있는 줄을 소제목으로">소제목</button>
         <button class="fb" onclick="fmtDivider()" title="커서 아래에 가운데 구분선">구분선</button>
         <button class="fb" onclick="fmtImageSlot()" title="커서 아래에 이미지 자리 표시 (짤·사진·도표)">이미지 자리</button>
+        <button class="fb" onclick="openLibrary('')" title="예전 글에 넣었던 이미지에서 찾아 복사">내 이미지</button>
         <span class="fsp"></span>
         <button class="fb" id="btn-preview" onclick="togglePreview()">미리보기</button>
       </div>
@@ -377,6 +394,18 @@
         </div>
         <div class="status">숫자는 본문·메모에 있는 것만 씁니다. 틀린 곳은 여기서 고친 뒤 복사하세요.</div>
       </div>
+    </div>
+  </div>
+
+  <div id="lib-modal" class="modal lib hidden" onclick="if (event.target === this) closeLibrary()">
+    <div class="box">
+      <h4><span>내 이미지 · 예전 글에 넣었던 이미지</span><button class="link" onclick="closeLibrary()">닫기 ✕</button></h4>
+      <div class="search">
+        <input id="lib-q" placeholder="감정이나 상황으로 찾기 (예: 안도, 멘붕, 계약, 아이)" oninput="scheduleLibrarySearch()" onkeydown="if (event.key === 'Enter') runLibrarySearch()">
+      </div>
+      <div class="chips" id="lib-chips"></div>
+      <div class="status" id="lib-status"></div>
+      <div class="grid" id="lib-grid"></div>
     </div>
   </div>
 
@@ -1148,8 +1177,8 @@
         IMAGE_SLOTS.map((s, i) => {
           let acts = '';
           if (s.kind === 'explain') acts = `<button class="btn-sec btn-xs" onclick="openChart(${i})">도표 만들기</button>`;
-          else if (s.kind === 'personal') acts = '<span class="h">내 사진·캡처를 넣는 자리</span>';
-          else acts = imageSearchLinks(s.search || s.desc);
+          else if (s.kind === 'personal') acts = `<span class="h">내 사진·캡처를 넣는 자리</span><button class="btn-sec btn-xs" onclick="openLibrary(IMAGE_SLOTS[${i}].desc)">예전 이미지</button>`;
+          else acts = `<button class="btn-sec btn-xs" onclick="openLibrary(IMAGE_SLOTS[${i}].search || IMAGE_SLOTS[${i}].desc)">내 이미지에서</button>` + imageSearchLinks(s.search || s.desc);
           return `<div class="slot"><span class="k">${escapeHtml(s.label)}</span><span class="d">${escapeHtml(s.desc)}</span>${acts}</div>`;
         }).join('');
     }
@@ -1219,6 +1248,69 @@
     }
     function saveChart() { ChartCard.download(document.getElementById('chart-canvas'), document.getElementById('chart-title').value); }
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && currentChartSlot) closeChart(); });
+
+    // ---------- 내 이미지 보관함 (예전 글 이미지 + AI 설명·감정 태그) ----------
+    const LIB_CHIPS = ['안도', '멘붕', '기쁨', '걱정', '분노', '허탈', '감동', '짤', '캡처', '도표', '아이', '계약', '재개발', '코인'];
+    let LIB_RESULTS = [];
+    let libTimer = null, libSeq = 0;
+    function openLibrary(q) {
+      document.getElementById('lib-modal').classList.remove('hidden');
+      document.getElementById('lib-chips').innerHTML = LIB_CHIPS.map(c => `<button onclick="setLibraryQuery('${c}')">${c}</button>`).join('');
+      setLibraryQuery(String(q || '').replace(/짤$/, '').trim());
+    }
+    function closeLibrary() { document.getElementById('lib-modal').classList.add('hidden'); }
+    function setLibraryQuery(q) { document.getElementById('lib-q').value = q; runLibrarySearch(); }
+    function scheduleLibrarySearch() { clearTimeout(libTimer); libTimer = setTimeout(runLibrarySearch, 350); }
+    async function runLibrarySearch() {
+      const q = document.getElementById('lib-q').value.trim();
+      const seq = ++libSeq;
+      const status = document.getElementById('lib-status'), grid = document.getElementById('lib-grid');
+      status.textContent = '찾는 중…';
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image_search', q, limit: 40 }) });
+        const data = await res.json();
+        if (seq !== libSeq) return;
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (data.unavailable) { status.textContent = '보관함 테이블이 아직 없습니다.'; grid.innerHTML = ''; return; }
+        LIB_RESULTS = data.images || [];
+        const progress = data.scanned_posts < data.all_posts ? ` · 글 ${data.all_posts}편 중 ${data.scanned_posts}편 정리됨 (매일 아침 이어서 정리)` : '';
+        status.textContent = (q ? `"${q}" ${LIB_RESULTS.length}장` : `최근 이미지 ${LIB_RESULTS.length}장`) + ` / 전체 ${data.total}장${progress} — 누르면 복사됩니다.`;
+        grid.innerHTML = LIB_RESULTS.length ? LIB_RESULTS.map((im, i) => `
+          <button class="im" onclick="copyLibraryImage(${i})" title="눌러서 이미지 복사">
+            <div class="ph"><img src="${escapeHtml(safeUrl(im.url + '?type=w386'))}" referrerpolicy="no-referrer" loading="lazy" alt=""></div>
+            <div class="tx">
+              <span class="ds">${escapeHtml(im.description || im.caption || '')}</span>
+              <span class="tg">${(im.tags || []).map(t => '#' + escapeHtml(t)).join(' ')}</span>
+              <span class="pt">${escapeHtml(decodeEntities(im.post_title || ''))}${im.published ? ' · ' + escapeHtml(im.published.replace(/-/g, '.')) : ''}</span>
+            </div>
+          </button>`).join('') : '<div class="empty">맞는 이미지가 없습니다. 다른 감정·상황 단어로 찾아보세요.</div>';
+      } catch (e) {
+        if (seq === libSeq) { status.textContent = `⚠️ 불러오지 못했습니다: ${e.message}`; grid.innerHTML = ''; }
+      }
+    }
+    // 네이버 이미지는 Worker를 거쳐 받아 PNG로 바꿔 클립보드에 (움직이는 GIF는 첫 장면만)
+    async function copyLibraryImage(i) {
+      const im = LIB_RESULTS[i];
+      if (!im) return;
+      const png = (async () => {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image_fetch', url: im.url }) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (blob.type === 'image/png') return blob;
+        const bmp = await createImageBitmap(blob);
+        const c = document.createElement('canvas');
+        c.width = bmp.width; c.height = bmp.height;
+        c.getContext('2d').drawImage(bmp, 0, 0);
+        return new Promise((ok, no) => c.toBlob(b => b ? ok(b) : no(new Error('PNG 변환 실패')), 'image/png'));
+      })();
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+        showToast(/\.gif$/i.test(im.url) ? '🖼️ 복사했습니다. 움직이는 이미지는 첫 장면만 복사됩니다.' : '🖼️ 이미지를 복사했습니다. 네이버 글의 해당 자리에 붙여 넣으세요.');
+      } catch (e) {
+        showToast(`⚠️ 이미지 복사 실패: ${e.message}`);
+      }
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibrary(); });
 
     // 오른쪽 "내 글 기억" 카드 → 본문 커서 아래에 연결 글 줄
     function insertPostLink(id) {
