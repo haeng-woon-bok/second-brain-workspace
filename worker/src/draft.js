@@ -11,21 +11,29 @@ import { DEFAULT_PROFILE, getStyleProfile, styleBaselineText } from './style.js'
 import { getFormatHabits } from './formatting.js';
 import { getPublishDates, publishedOf } from './published.js';
 
-// 필자 서식 습관 기본값 (2026-11-20, 최근 글 6편 측정: 1000자당 형광펜 3.5 / 소제목 1.3 / 구분선 1.5)
-const DEFAULT_HABITS = { highlights_per_1000: 3.5, headings_per_1000: 1.3, dividers_per_1000: 1.5, highlight_examples: [], heading_examples: [] };
+// 필자 서식 습관 기본값 (2026-11-20, 최근 글 6편 측정: 1000자당 형광펜 3.5 / 소제목 1.3 / 구분선 1.5 / 이미지 1.2)
+const DEFAULT_HABITS = { highlights_per_1000: 3.5, headings_per_1000: 1.3, dividers_per_1000: 1.5, images_per_1000: 1.2, highlight_examples: [], heading_examples: [] };
 
 function formatRulesText(habits, maxChars) {
   const h = habits || DEFAULT_HABITS;
-  const n = (per) => Math.max(1, Math.round(per * maxChars / 1000 * 0.8));
+  // 짧은 글도 필자 글처럼 최소 개수는 채움 (1600자 글에도 이미지 3장, 형광펜 여러 곳)
+  const n = (per, min = 1) => Math.max(min, Math.round(per * Math.max(maxChars, 1200) / 1000));
   const hl = (h.highlight_examples || []).slice(0, 10).map(t => `- ${t}`).join('\n');
   const hd = (h.heading_examples || []).slice(0, 6).map(t => `- ${t}`).join('\n');
   return `- 형광펜: 독자의 시선이 이어지길 바라는 핵심 구절을 text 안에서 ==구절== 로 감싸세요.
   한 문장 안의 구절만(문장 경계를 넘지 말 것). 결론·전환·숫자·독자에게 던지는 질문 같은 흐름의 고비에. 연달아 칠하지 말 것.
-  글 전체에 ${n(h.highlights_per_1000)}개 안팎(필자 평균 1000자당 ${h.highlights_per_1000}개).
+  글 전체에 ${n(h.highlights_per_1000, 3)}개 안팎(필자 평균 1000자당 ${h.highlights_per_1000}개).
 - 굵게(**...**)는 거의 쓰지 않습니다. 쓰지 마세요.
 - 소제목: 글이 여러 묶음으로 나뉘면 각 묶음 첫 문단의 heading에 소제목(25자 이내)을 넣으세요. text에는 넣지 마세요.
   필자 평균 1000자당 ${h.headings_per_1000}개. 본문이 1200자 미만이면 소제목 없이.
-- 구분선: 흐름이 바뀌는 문단(새 소제목 앞, insight 시작, outro 시작)은 divider_before=true. 글 전체에 ${n(h.dividers_per_1000)}개 안팎. 첫 문단에는 넣지 마세요.${hl ? `
+- 구분선: 흐름이 바뀌는 문단(새 소제목 앞, insight 시작, outro 시작)은 divider_before=true. 글 전체에 ${n(h.dividers_per_1000)}개 안팎. 첫 문단에는 넣지 마세요.
+- 이미지 자리(images): 필자는 1000자당 약 ${h.images_per_1000 ?? 1.2}장(글 전체 ${n(h.images_per_1000 ?? 1.2, 2)}장 안팎)의 이미지를 넣습니다. 이미지는 만들지 말고 "어디에 어떤 이미지가 좋을지"만 표시하세요.
+  초안에 숫자·일정이 있으면 explain을, 감정이 드러나는 장면이 있으면 reaction을 우선 고려하세요.
+  kind는 셋 중 하나:
+  · reaction: 감정·분위기를 살리는 짤(만화 컷, 밈). 결론이 나거나 감정이 터지는 문단 뒤. search에 이미지 검색어(예: "끝났다 짤", "멘붕 짤")
+  · personal: 필자만 가진 자료(카톡 캡처, 현장 사진, 계약서, 앱 화면). 초안에 그런 경험·대화가 나오는 문단 뒤
+  · explain: 숫자·비율·일정·절차·구조를 한눈에 보여 줄 도표. 초안에 그 숫자나 순서가 실제로 있을 때만
+  description은 무엇을 담을지 30자 이내. after_paragraph는 문단 번호(0부터). 한 문단에 하나까지.${hl ? `
 [필자가 실제로 형광펜을 칠한 구절]
 ${hl}` : ''}${hd ? `
 [필자의 실제 소제목]
@@ -95,6 +103,19 @@ const SCHEMA = {
           after_paragraph: { type: 'INTEGER' }
         },
         required: ['label', 'ref', 'after_paragraph']
+      }
+    },
+    images: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          kind: { type: 'STRING', enum: ['reaction', 'personal', 'explain'] },
+          description: { type: 'STRING' },
+          search: { type: 'STRING' },
+          after_paragraph: { type: 'INTEGER' }
+        },
+        required: ['kind', 'description', 'after_paragraph']
       }
     },
     gaps: { type: 'ARRAY', items: { type: 'STRING' } },
@@ -222,7 +243,7 @@ export function cleanHashtags(list, userTags) {
 export function breakSentences(text) {
   return String(text)
     .split('\n')
-    .map(line => line.replace(/([.?!])\s+(?=\S)/g, '$1\n'))
+    .map(line => line.replace(/([.?!](?:==|\*\*)?)\s+(?=\S)/g, '$1\n'))
     .join('\n');
 }
 
@@ -259,6 +280,21 @@ export function assembleDraft(req, out, candidates, seriesPrev = null) {
     if (related.length >= (seriesPrev ? 3 : 2)) break;
   }
 
+  // 이미지 자리: [🖼️ 짤: 설명 | 검색: 검색어] / [🖼️ 사진: 설명] / [🖼️ 도표: 설명]
+  const KIND_LABEL = { reaction: '짤', personal: '사진', explain: '도표' };
+  const clean = (s, n) => String(s || '').replace(/[\[\]|\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+  const images = [];
+  for (const im of (Array.isArray(out.images) ? out.images : [])) {
+    const label = KIND_LABEL[im && im.kind];
+    const desc = clean(im && im.description, 40);
+    if (!label || !desc) continue;
+    const after = Math.min(Math.max(parseInt(im.after_paragraph, 10) || 0, 0), Math.max(paragraphs.length - 1, 0));
+    if (images.some(x => x.after_paragraph === after)) continue;
+    const search = im.kind === 'reaction' ? clean(im.search, 30) : '';
+    images.push({ kind: im.kind, after_paragraph: after, line: `[🖼️ ${label}: ${desc}${search ? ` | 검색: ${search}` : ''}]` });
+    if (images.length >= 5) break;
+  }
+
   const hashtags = cleanHashtags(out.hashtags, req.tags);
   const title = req.title || String(out.title || '').trim();
 
@@ -268,6 +304,7 @@ export function assembleDraft(req, out, candidates, seriesPrev = null) {
     if (p.divider && i > 0) blocks.push('---');
     if (p.heading) blocks.push(`## ${p.heading}`);
     blocks.push(p.text);
+    images.filter(im => im.after_paragraph === i).forEach(im => blocks.push(im.line));
     related.filter(r => r.after_paragraph === i)
       .forEach(r => blocks.push(`${r.label} : [${r.title}](${r.url})`));
   });
@@ -294,7 +331,8 @@ export function assembleDraft(req, out, candidates, seriesPrev = null) {
       format: {
         highlights: (bodyText.match(/==[^=\n]+?==/g) || []).length,
         headings: paragraphs.filter(p => p.heading).length,
-        dividers: blocks.filter(b => b === '---').length
+        dividers: blocks.filter(b => b === '---').length,
+        images: images.length
       },
       body_chars: bodyText.length,
       memo_chars: req.memo.length

@@ -23,6 +23,17 @@
   };
 
   const LINK_LINE = /^(이전글|관련글|다음글)\s*:\s*\[([^\]]+)\]\((\S+?)\)\s*$/;
+  // 이미지 자리: [🖼️ 짤: 설명 | 검색: 검색어] / [🖼️ 사진: 설명] / [🖼️ 도표: 설명]
+  const IMG_LINE = /^\[\u{1F5BC}️?\s*(짤|사진|도표|이미지)\s*:\s*([^|\]]*?)\s*(?:\|\s*검색\s*:\s*([^\]]*?)\s*)?\]$/u;
+  const IMG_KIND = { '짤': 'reaction', '사진': 'personal', '도표': 'explain', '이미지': 'reaction' };
+
+  // 본문의 이미지 자리 목록 [{kind, label, desc, search, line}]
+  function imageSlots(text) {
+    return String(text || '').split('\n').map((l, i) => {
+      const m = l.trim().match(IMG_LINE);
+      return m ? { kind: IMG_KIND[m[1]], label: m[1], desc: m[2].trim(), search: (m[3] || '').trim(), line: i } : null;
+    }).filter(Boolean);
+  }
   const URL_ONLY = /^https?:\/\/\S+$/;
 
   // 예전 초안 형식("이전글 :\n제목\nhttps://...")을 한 줄 표시로 정리
@@ -41,6 +52,8 @@
       if (/^(-{3,}|—{2,}|_{3,})$/.test(t)) return { type: 'hr' };
       const h = t.match(/^#{2,3}\s+(.+)$/);
       if (h) return { type: 'h', text: h[1] };
+      const im = t.match(IMG_LINE);
+      if (im) return { type: 'img', label: im[1], desc: im[2].trim(), search: (im[3] || '').trim(), raw: t };
       const l = t.match(LINK_LINE);
       if (l && safeUrl(l[3])) return { type: 'link', label: l[1], title: l[2], url: safeUrl(l[3]) };
       return { type: 'p', text: line };
@@ -72,6 +85,7 @@
       if (b.type === 'hr') return '';
       if (b.type === 'h') return stripInline(b.text);
       if (b.type === 'link') return `${b.label} : ${b.title}\n${b.url}`;
+      if (b.type === 'img') return b.raw;
       return stripInline(b.text);
     }).join('\n').replace(/\n{3,}/g, '\n\n');
   }
@@ -96,6 +110,7 @@
         case 'empty': return '<p><br></p>';
         case 'hr': return '<hr>';
         case 'h': return `<p><span style="font-size:24px;"><b>${inline(b.text)}</b></span></p>`;
+        case 'img': return `<p style="text-align:center;"><span style="color:#999999;">${esc(b.raw)}</span></p>`;
         case 'link': return `<p style="text-align:center;"><b>${esc(b.label)} :</b> <a href="${esc(b.url)}" target="_blank">${esc(b.title)}</a></p>`;
         default: return `<p>${inline(b.text)}</p>`;
       }
@@ -118,6 +133,7 @@
     for (const b of parse(text)) {
       if (b.type === 'hr') { flush(); out.push(hrComp); continue; }
       if (b.type === 'empty') buf.push(para(span('​')));
+      else if (b.type === 'img') buf.push(para(span(esc(b.raw)), 'center'));
       else if (b.type === 'h') buf.push(para(span(`<b>${inline(b.text)}</b>`, 'fs24')));
       else if (b.type === 'link') buf.push(para(
         span(`<b>${esc(b.label)} :</b>`) + span(' ') +
@@ -135,6 +151,7 @@
         case 'empty': return '<p class="nv-empty">&nbsp;</p>';
         case 'hr': return '<hr class="nv-hr">';
         case 'h': return `<p class="nv-h">${inline(b.text, { markClass: 'nv-mark' })}</p>`;
+        case 'img': return `<div class="nv-img"><span class="k">${esc(b.label)}</span> ${esc(b.desc)}${b.search ? ` <span class="s">검색어: ${esc(b.search)}</span>` : ''}</div>`;
         case 'link': return `<p class="nv-link"><b>${esc(b.label)} :</b> <a href="${esc(b.url)}" target="_blank" rel="noopener noreferrer">${esc(b.title)}</a></p>`;
         default: {
           const gap = /^\[(✍️ 보충 필요|🖼️? ?이미지)/.test(b.text.trim());
@@ -167,5 +184,5 @@
     throw new Error('clipboard unavailable');
   }
 
-  global.NaverFormat = { HIGHLIGHT, parse, inline, toPlain, stripInline, toHtmlA, toHtmlB, toPreview, copyRich, normalizeLegacy };
+  global.NaverFormat = { HIGHLIGHT, imageSlots, parse, inline, toPlain, stripInline, toHtmlA, toHtmlB, toPreview, copyRich, normalizeLegacy };
 })(window);

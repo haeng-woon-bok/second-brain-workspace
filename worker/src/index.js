@@ -9,13 +9,14 @@ import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './dra
 import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
+import { handleImageChart } from './chart.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
 const ARCHIVE_LIMIT = 200;
 
 // Gemini를 호출하는 웹 요청 타입 (Rate Limiting 대상)
-const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests']);
+const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests', 'image_chart']);
 
 export default {
   async fetch(request, env, ctx) {
@@ -108,6 +109,15 @@ export default {
     if (NEWS_TYPES.has(body.type)) {
       try {
         const { status, json } = await handleNewsRequest(body, env, ctx);
+        return jsonResponse(json, status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 502);
+      }
+    }
+
+    if (body.type === 'image_chart') {
+      try {
+        const { status, json } = await handleImageChart(body, env);
         return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);

@@ -4,7 +4,7 @@
 import { getPublishDates } from './published.js';
 
 const BLOG_ID = 'dad_luckyhappy';
-const CACHE_KEY = `https://cache.internal/naver-format-habits/${BLOG_ID}/v1`;
+const CACHE_KEY = `https://cache.internal/naver-format-habits/${BLOG_ID}/v2`;
 const CACHE_TTL_SEC = 24 * 3600;
 const SAMPLE_POSTS = 6;
 
@@ -24,8 +24,10 @@ export function extractHabits(html) {
   const headings = [...main.matchAll(/<span[^>]*class="se-fs-fs(?:2[4-9]|3\d)[^"]*"[^>]*>([\s\S]*?)<\/span>/g)]
     .map(m => decode(m[1])).filter(t => t.length >= 2 && t.length <= 60);
   const dividers = (main.match(/se-component se-horizontalLine/g) || []).length;
+  // 이미지 묶음(나란히 붙인 사진)도 한 자리로 셈
+  const images = (main.match(/se-component se-(?:image|imageStrip|imageGroup|sticker)\b/g) || []).length;
   const text = [...main.matchAll(/<p class="se-text-paragraph[^>]*>([\s\S]*?)<\/p>/g)].map(m => decode(m[1])).join('');
-  return { highlights, headings, dividers, chars: text.length };
+  return { highlights, headings, dividers, images, chars: text.length };
 }
 
 async function fetchPost(logNo) {
@@ -50,6 +52,7 @@ async function compute(ctx) {
     highlights_per_1000: per1000('highlights'),
     headings_per_1000: per1000('headings'),
     dividers_per_1000: per1000('dividers'),
+    images_per_1000: per1000('images'),
     highlight_examples: posts.flatMap(p => p.highlights.slice(0, 4)).slice(0, 14),
     heading_examples: posts.flatMap(p => p.headings.slice(0, 3)).slice(0, 8)
   };
