@@ -409,6 +409,7 @@
             snapshot: 'Supabase DB'
           }));
           renderMemory();
+          loadAllDigests();
         }
       } catch (err) {
         console.warn('초기 데이터 로딩 에러:', err);
@@ -781,6 +782,19 @@
         if (data.unavailable) { digestsUnavailable = true; return; }
         Object.entries(data.digests || {}).forEach(([id, d]) => DIGESTS.set(Number(id), d));
         if ((data.pending || []).length && round < 2) setTimeout(() => loadDigests(data.pending, round + 1).then(() => renderMemoryCards(lastMemIds)), 1200);
+      } catch (e) {}
+    }
+
+    // 저장된 요약·키워드를 한 번에 받아 두면 검색이 모든 글의 요약·키워드까지 본다
+    async function loadAllDigests() {
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'post_digests', all: true }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (data.unavailable) { digestsUnavailable = true; return; }
+        Object.entries(data.digests || {}).forEach(([id, d]) => DIGESTS.set(Number(id), d));
+        if (lastMemIds.length) renderMemoryCards(lastMemIds);
       } catch (e) {}
     }
 

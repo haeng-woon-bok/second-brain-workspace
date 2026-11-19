@@ -55,6 +55,16 @@ ${body}`;
 
 // { ids: [...] } → { digests: { [id]: {summary, keywords} }, pending: [아직 못 만든 id] }
 export async function handlePostDigests(body, env) {
+  // { all: true } → 저장된 요약 전체 (검색용, 새로 만들지 않음)
+  if (body.all === true) {
+    const res = await sb(env, 'post_digests?select=post_id,summary,keywords&limit=2000');
+    if (res.status === 404 || res.status === 400) return { status: 200, json: { digests: {}, unavailable: true } };
+    if (!res.ok) throw new Error(`post_digests 조회 실패 (HTTP ${res.status})`);
+    const digests = {};
+    for (const r of await res.json()) digests[r.post_id] = { summary: r.summary, keywords: r.keywords || [] };
+    return { status: 200, json: { digests } };
+  }
+
   const ids = [...new Set((Array.isArray(body.ids) ? body.ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].slice(0, MAX_IDS);
   if (!ids.length) return { status: 400, json: { error: 'ids가 필요합니다.' } };
 
