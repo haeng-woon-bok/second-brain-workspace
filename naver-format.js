@@ -82,9 +82,16 @@
       .replace(/==([^=\n]+?)==/g, '$1');
   }
 
-  // 방식 A: 일반 HTML (인라인 스타일)
+  // 구분선 바로 옆 빈 줄은 뺀다: 에디터가 구분선 위아래에 빈 줄을 스스로 하나씩 넣어서
+  // 그대로 두면 간격이 두 배가 됨 (2026-11-20 붙여넣기 테스트)
+  function trimAroundHr(blocks) {
+    return blocks.filter((b, i) => !(b.type === 'empty' &&
+      ((blocks[i - 1] && blocks[i - 1].type === 'hr') || (blocks[i + 1] && blocks[i + 1].type === 'hr'))));
+  }
+
+  // 방식 A: 일반 HTML (인라인 스타일). 테스트에서 형광펜·굵게·소제목·구분선·가운데 링크 모두 유지됨
   function toHtmlA(text) {
-    return parse(text).map((b) => {
+    return trimAroundHr(parse(text)).map((b) => {
       switch (b.type) {
         case 'empty': return '<p><br></p>';
         case 'hr': return '<hr>';
