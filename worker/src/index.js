@@ -9,7 +9,6 @@ import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './dra
 import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
-import { handleImageChart, handleSourceFetch } from './chart.js';
 import { IMAGE_TYPES, handleImageRequest } from './images.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
@@ -17,7 +16,7 @@ const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
 const ARCHIVE_LIMIT = 200;
 
 // Gemini를 호출하는 웹 요청 타입 (Rate Limiting 대상)
-const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests', 'image_chart']);
+const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests']);
 
 export default {
   async fetch(request, env, ctx) {
@@ -124,22 +123,6 @@ export default {
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
       }
-    }
-
-    if (body.type === 'image_chart') {
-      try {
-        const { status, json } = await handleImageChart(body, env);
-        return jsonResponse(json, status);
-      } catch (e) {
-        return jsonResponse({ error: e.message }, 502);
-      }
-    }
-
-    // 도표 출처 기사 원문 (구글 검색 근거 링크만) — 숫자 대조는 웹이 함
-    if (body.type === 'source_fetch') {
-      const r = await handleSourceFetch(body);
-      if (r.binary) return new Response(r.binary, { status: 200, headers: { ...corsHeaders, 'Content-Type': r.contentType, ...r.headers, 'Access-Control-Expose-Headers': 'X-Final-Url' } });
-      return jsonResponse(r.json, r.status);
     }
 
     if (body.type === 'web_draft') {

@@ -65,39 +65,6 @@ async function callGemini(body, env, timeoutMs) {
   return text;
 }
 
-// 구글 검색을 붙인 생성: 답변 + 근거 페이지 목록 (도표용 자료 찾기)
-export async function generateGrounded(prompt, env, { timeoutMs = 45000, temperature = 0.2 } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let res;
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature, maxOutputTokens: 4096 } }) }
-    );
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`검색 응답이 ${Math.round(timeoutMs / 1000)}초 안에 오지 않았습니다`);
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Gemini 검색 오류 (HTTP ${res.status}): ${data.error?.message || '알 수 없음'}`);
-  const cand = data.candidates?.[0] || {};
-  const text = cand.content?.parts?.map(p => p.text || '').join('') || '';
-  const meta = cand.groundingMetadata || {};
-  const chunks = (meta.groundingChunks || []).map(c => ({ title: c.web?.title || '', url: c.web?.uri || '' }));
-  // 답변 문장 뒤에 근거 번호 [1][2]를 붙여, 다음 단계가 어느 출처의 사실인지 알 수 있게
-  let annotated = text;
-  for (const s of (meta.groundingSupports || [])) {
-    const seg = s.segment?.text;
-    const idx = (s.groundingChunkIndices || []).filter(i => chunks[i]?.url).map(i => `[${i + 1}]`).join('');
-    if (seg && idx && annotated.includes(seg)) annotated = annotated.replace(seg, `${seg} ${idx}`);
-  }
-  return { text: annotated, chunks, queries: meta.webSearchQueries || [] };
-}
-
 // 자유 텍스트 생성 (Slack 봇용)
 export async function generateText(prompt, env) {
   return callGemini({ contents: [{ parts: [{ text: prompt }] }] }, env);
