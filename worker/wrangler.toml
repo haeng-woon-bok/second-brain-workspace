@@ -28,6 +28,11 @@ simple = { limit = 10, period = 60 }
 [env.tester]
 name = "studio-tester"
 
+# 테스터 블로그 (ID를 받으면 바꿔서 다시 배포). 값이 없으면 내 블로그로 동작하므로 꼭 지정
+[env.tester.vars]
+BLOG_ID = "tester-pending"
+BLOG_NAME = "테스터"
+
 [[env.tester.ratelimits]]
 name = "AI_LIMITER"
 namespace_id = "1002"

@@ -4,6 +4,7 @@
 // - 실패하면 DEFAULT_PROFILE(2026-11-18 수동 분석값)로 동작
 
 import { supabaseHeaders } from './lib.js';
+import { isOwner } from './profile.js';
 
 export const DEFAULT_PROFILE = {
   source: 'default-2026-11-18',
@@ -148,6 +149,20 @@ export async function getStyleProfile(env, ctx) {
 // draft.js 프롬프트용 문체 설명
 export function styleBaselineText(p = DEFAULT_PROFILE) {
   const e = p.endings, h = p.habits;
+  // 다른 블로거(테스터 등): 사람이 쓴 설명·개인 정보 없이, 그 사람 글에서 잰 수치만으로 설명
+  if (!isOwner()) {
+    const kinds = [['합쇼체 "~습니다/~ㅂ니다."', e.nida], ['해요체 "~해요./~예요."', e.yo], ['평서 반말 "~한다./~이다."', e.plain_da]]
+      .sort((a, b) => b[1] - a[1]);
+    return `
+- (필자 글 ${p.posts}편 자동 분석 기준)
+- 어미: 가장 많이 쓰는 어미는 ${kinds[0][0]}(문장의 약 ${Math.round(kinds[0][1])}%), 다음은 ${kinds[1][0]}(약 ${Math.round(kinds[1][1])}%), ${kinds[2][0]}는 약 ${Math.round(kinds[2][1])}%.
+  초안의 어미가 이와 다르면 필자가 평소 가장 많이 쓰는 어미로 맞출 것
+- 줄: 한 줄은 평균 ${p.avg_line}자 정도. 한 문장이 길면 의미 단위로 줄바꿈. 문단 사이에는 빈 줄
+- 연결 글: 글의 ${Math.round(h.prev_link * 100)}%에 "이전글 :" 또는 "관련글 :"로 과거 글을 연결함
+- 관점 표현("개인적으로", "제 생각")은 글의 ${Math.round(h.personal * 100)}%, 독자에게 말 건네기("여러분")는 ${Math.round(h.reader * 100)}%에서 씀
+- 이모지는 글당 평균 ${h.emoji_per_post}개 정도. 목록 기호(-, >)는 쓰지 않음. 서식은 아래 "서식" 규칙의 표시만 사용
+- 필자에 대한 다른 정보는 없음. 말투는 아래 [필자의 실제 글]을 따를 것`;
+  }
   return `
 - (필자 글 ${p.posts}편 자동 분석 기준)
 - 어미: 합쇼체 "~습니다/~ㅂ니다."가 기본(문장의 약 ${Math.round(e.nida)}%). 도입·전환에서는 "~했는데요./~인데요."(약 ${Math.round(e.neundeyo)}%), 독자에게는 "~신가요?/~을까요?"로 물음.

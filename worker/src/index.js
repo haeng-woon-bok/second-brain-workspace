@@ -10,6 +10,7 @@ import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
 import { IMAGE_TYPES, MARK_TYPES, handleImageRequest } from './images.js';
+import { initProfile, profileInfo } from './profile.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
@@ -20,6 +21,7 @@ const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'p
 
 export default {
   async fetch(request, env, ctx) {
+    initProfile(env);   // 이 Worker가 맡은 블로그 (BLOG_ID / BLOG_NAME)
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -94,7 +96,7 @@ export default {
         }
       } catch (e) {}
 
-      return jsonResponse({ news: latestNews, briefing: latestBriefing, archives, indices: latestIndices, items: latestItems, themes: latestThemes, news_date: latestDate });
+      return jsonResponse({ news: latestNews, briefing: latestBriefing, archives, indices: latestIndices, items: latestItems, themes: latestThemes, news_date: latestDate, profile: profileInfo() });
     }
 
     if (body.type === 'post_digests') {

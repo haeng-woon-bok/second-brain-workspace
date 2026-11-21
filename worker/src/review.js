@@ -7,6 +7,7 @@
 
 import { searchPastInsights, generateJson } from './lib.js';
 import { DEFAULT_PROFILE, getStyleProfile, isMetaLine, splitSentences, classifyEnding, cleanLine, stripFormatMarks } from './style.js';
+import { blogId, blogName, isOwner } from './profile.js';
 
 // 필자 기준선: style_profile(자동 계산, 24시간마다 갱신)에서 가져옴. 없으면 DEFAULT_PROFILE
 const toBaseline = (p = DEFAULT_PROFILE) => ({
@@ -129,7 +130,7 @@ export function validateComments(body, rawComments) {
 function buildPrompt(req, samples, stats, profile = DEFAULT_PROFILE) {
   const BASELINE = toBaseline(profile);
   const sampleText = samples.map((s, i) => `<<필자 글 ${i + 1}: ${s.title}>>\n${(s.content_final || '').slice(0, 900)}`).join('\n\n');
-  return `당신은 블로거 "행운복의 재테크"(dad_luckyhappy)의 첨삭 편집자입니다.
+  return `당신은 블로거 "${blogName()}"(${blogId()})의 첨삭 편집자입니다.
 필자가 쓴 [본문]을 읽고 문제가 있는 곳에 코멘트를 답니다. 글을 새로 쓰지 말고, 지적과 문단 단위 수정안만 제시하세요.
 
 # 볼 것 (이 3가지만)
@@ -139,11 +140,12 @@ function buildPrompt(req, samples, stats, profile = DEFAULT_PROFILE) {
    - 3단 서사: intro(개인 맥락) → body(근거·경험) → insight(필자의 관점·판단). 빠지거나 약한 단계
    - 문단 순서가 어색하거나 같은 말을 반복하는 곳
 2. style (필자 문체 일관성)
-   - 필자는 합쇼체 "~습니다/~ㅂ니다"가 기본. "~는데요/~인데요"(도입·전환)와 독자 질문 "~신가요?/~을까요?"는 필자 말투가 맞음
-   - 평서 반말 "~한다./~이다./~있다."는 거의 쓰지 않음(3%) → 이런 문장은 style로 지적. 이모지도 쓰지 않음
+${isOwner() ? `   - 필자는 합쇼체 "~습니다/~ㅂ니다"가 기본. "~는데요/~인데요"(도입·전환)와 독자 질문 "~신가요?/~을까요?"는 필자 말투가 맞음
+   - 평서 반말 "~한다./~이다./~있다."는 거의 쓰지 않음(3%) → 이런 문장은 style로 지적. 이모지도 쓰지 않음` : `   - 아래 "자동 측정 결과"의 필자 평균 어미 비율과 [필자 글]의 말투가 기준입니다. 필자가 평소 잘 쓰지 않는 어미·말투로 쓴 문장을 style로 지적
+   - 이모지·느낌표 같은 표현도 [필자 글]에 비해 지나치게 많거나 적으면 지적`}
    - 본문의 ==문장==(노란 형광펜), **문장**(굵게), "## "(소제목), "---"(구분선), "관련글 : [제목](주소)"는 네이버 서식 표시이니 기호 자체를 지적하지 마세요.
      형광펜이 한 문단에 너무 많거나 핵심이 아닌 곳에 칠해졌으면 readability로 지적해도 됩니다.
-   - 도입은 "저는 ~했는데요."처럼 개인 맥락, 마무리는 "여러분"에게 건네는 말
+${isOwner() ? '   - 도입은 "저는 ~했는데요."처럼 개인 맥락, 마무리는 "여러분"에게 건네는 말' : '   - 도입과 마무리 방식이 [필자 글]과 크게 다르면 지적'}
    - 아래 [필자 글]과 말투가 크게 다른 문단
 3. readability (가독성)
    - 너무 긴 문장, 모호한 지시어("이것", "그런"), 중복 표현, 한 문단에 주제가 여러 개

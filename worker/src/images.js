@@ -3,6 +3,7 @@
 // - image_fetch: 네이버 이미지 받아 오기 (네이버 이미지는 다른 사이트에서 직접 못 읽어서 웹의 "이미지 복사"용으로 대신 받음)
 import { supabaseHeaders } from './lib.js';
 import { getPublishDates, publishedOf } from './published.js';
+import { blogId } from './profile.js';
 
 export const IMAGE_TYPES = new Set(['image_search', 'image_fetch', 'meme_list', 'meme_mark']);
 export const MARK_TYPES = new Set(['meme_mark']);   // 작업 키가 있어야 하는 요청
@@ -89,7 +90,7 @@ async function handleSearch(body, env, ctx) {
 async function handleFetch(body) {
   const url = String(body.url || '');
   if (!IMG_HOST.test(url)) return { status: 400, json: { error: '네이버 블로그 이미지 주소만 받을 수 있습니다.' } };
-  const res = await fetch(`${url}?type=w773`, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://blog.naver.com/dad_luckyhappy' } });
+  const res = await fetch(`${url}?type=w773`, { headers: { 'User-Agent': 'Mozilla/5.0', Referer: `https://blog.naver.com/${blogId()}` } });
   const type = res.headers.get('Content-Type') || '';
   if (!res.ok || !type.startsWith('image/')) return { status: 502, json: { error: `이미지를 받지 못했습니다 (HTTP ${res.status})` } };
   return { status: 200, binary: res.body, contentType: type };

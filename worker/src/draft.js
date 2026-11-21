@@ -9,6 +9,7 @@
 import { searchPastInsights, generateJson, normalize, supabaseHeaders } from './lib.js';
 import { DEFAULT_PROFILE, getStyleProfile, styleBaselineText } from './style.js';
 import { getFormatHabits } from './formatting.js';
+import { blogId, blogName } from './profile.js';
 import { getPublishDates, publishedOf } from './published.js';
 
 // 필자 서식 습관 기본값 (2026-11-20, 최근 글 6편 측정: 1000자당 형광펜 3.5 / 소제목 1.3 / 구분선 1.5 / 이미지 1.2)
@@ -174,7 +175,7 @@ function buildPrompt(req, styleSamples, candidates, maxChars, profile = DEFAULT_
     ? `제목: ${req.news.title}\n요약: ${req.news.summary || '(없음)'}`
     : '(선택한 뉴스 없음)';
 
-  return `당신은 블로거 "행운복의 재테크"(dad_luckyhappy)의 편집 보조입니다.
+  return `당신은 블로거 "${blogName()}"(${blogId()})의 편집 보조입니다.
 필자가 생각나는 대로 쓴 [초안]을, 필자가 평소 쓰는 블로그 글의 구조와 문체로 정리합니다.
 당신은 글을 새로 쓰는 작가가 아니라, 필자의 생각을 정리하는 편집자입니다.
 
@@ -194,7 +195,7 @@ function buildPrompt(req, styleSamples, candidates, maxChars, profile = DEFAULT_
 - outro: 여러분에게 건네는 한두 줄
 문단 수는 초안 분량에 맞게 3~8개.
 
-# 필자의 문체 기준 (과거 글 74편 분석)
+# 필자의 문체 기준 (과거 글 자동 분석)
 ${styleBaselineText(profile)}
 
 # 서식 (필자가 네이버 블로그에서 쓰는 방식)

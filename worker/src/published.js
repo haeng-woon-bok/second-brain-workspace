@@ -1,9 +1,9 @@
 // 블로그 글의 실제 발행일 (네이버 글 목록의 addDate)
 // my_insights.created_at은 DB로 가져온 날이라 발행일과 다르다. 6시간 캐시.
 import { kstDate } from './news.js';
+import { blogId } from './profile.js';
 
-const BLOG_ID = 'dad_luckyhappy';
-const CACHE_KEY = `https://cache.internal/naver-publish-dates/${BLOG_ID}/public-v2`;
+const cacheKey = () => `https://cache.internal/naver-publish-dates/${blogId()}/public-v2`;
 const CACHE_TTL_SEC = 6 * 3600;
 const PER_PAGE = 30;
 const MAX_PAGES = 10;
@@ -25,8 +25,8 @@ export function logNoFromUrl(url) {
 
 async function fetchPage(page) {
   const res = await fetch(
-    `https://blog.naver.com/PostTitleListAsync.naver?blogId=${BLOG_ID}&currentPage=${page}&countPerPage=${PER_PAGE}`,
-    { headers: { 'User-Agent': 'Mozilla/5.0', Referer: `https://blog.naver.com/${BLOG_ID}` } }
+    `https://blog.naver.com/PostTitleListAsync.naver?blogId=${blogId()}&currentPage=${page}&countPerPage=${PER_PAGE}`,
+    { headers: { 'User-Agent': 'Mozilla/5.0', Referer: `https://blog.naver.com/${blogId()}` } }
   );
   if (!res.ok) throw new Error(`naver list HTTP ${res.status}`);
   const text = await res.text();
@@ -56,14 +56,14 @@ async function loadFromNaver() {
 export async function getPublishDates(ctx) {
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   if (cache) {
-    const hit = await cache.match(CACHE_KEY);
+    const hit = await cache.match(cacheKey());
     if (hit) return hit.json();
   }
   try {
     const dates = await loadFromNaver();
     if (cache && Object.keys(dates).length) {
       const resp = new Response(JSON.stringify(dates), { headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${CACHE_TTL_SEC}` } });
-      const put = cache.put(CACHE_KEY, resp);
+      const put = cache.put(cacheKey(), resp);
       if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put;
     }
     return dates;

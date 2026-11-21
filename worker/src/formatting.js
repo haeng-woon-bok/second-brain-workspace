@@ -2,9 +2,9 @@
 // - 형광펜(#fff8b2) 문장, 소제목(큰 굵은 글씨), 구분선 개수
 // - draft.js 프롬프트에 "이런 곳에 형광펜을 칠한다" 예시로 넣는다
 import { getPublishDates } from './published.js';
+import { blogId } from './profile.js';
 
-const BLOG_ID = 'dad_luckyhappy';
-const CACHE_KEY = `https://cache.internal/naver-format-habits/${BLOG_ID}/v2`;
+const cacheKey = () => `https://cache.internal/naver-format-habits/${blogId()}/v2`;
 const CACHE_TTL_SEC = 24 * 3600;
 const SAMPLE_POSTS = 6;
 
@@ -31,8 +31,8 @@ export function extractHabits(html) {
 }
 
 async function fetchPost(logNo) {
-  const res = await fetch(`https://blog.naver.com/PostView.naver?blogId=${BLOG_ID}&logNo=${logNo}`, {
-    headers: { 'User-Agent': 'Mozilla/5.0', Referer: `https://blog.naver.com/${BLOG_ID}` }
+  const res = await fetch(`https://blog.naver.com/PostView.naver?blogId=${blogId()}&logNo=${logNo}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0', Referer: `https://blog.naver.com/${blogId()}` }
   });
   if (!res.ok) throw new Error(`post HTTP ${res.status}`);
   return res.text();
@@ -63,12 +63,12 @@ export async function getFormatHabits(ctx) {
   const cache = typeof caches !== 'undefined' ? caches.default : null;
   try {
     if (cache) {
-      const hit = await cache.match(CACHE_KEY);
+      const hit = await cache.match(cacheKey());
       if (hit) return hit.json();
     }
     const habits = await compute(ctx);
     if (habits && cache) {
-      const put = cache.put(CACHE_KEY, new Response(JSON.stringify(habits), {
+      const put = cache.put(cacheKey(), new Response(JSON.stringify(habits), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${CACHE_TTL_SEC}` }
       }));
       if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put;
