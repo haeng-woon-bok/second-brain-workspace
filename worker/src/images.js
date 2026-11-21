@@ -4,7 +4,8 @@
 import { supabaseHeaders } from './lib.js';
 import { getPublishDates, publishedOf } from './published.js';
 
-export const IMAGE_TYPES = new Set(['image_search', 'image_fetch']);
+export const IMAGE_TYPES = new Set(['image_search', 'image_fetch', 'meme_list', 'meme_mark']);
+export const MARK_TYPES = new Set(['meme_mark']);   // 작업 키가 있어야 하는 요청
 const IMG_HOST = /^https:\/\/(?:postfiles|blogfiles)\.pstatic\.net\/[^?#\s]+$/;
 
 // 감정 검색어를 비슷한 말로 넓힘 (짤은 같은 감정을 여러 말로 부름)
@@ -94,8 +95,61 @@ async function handleFetch(body) {
   return { status: 200, binary: res.body, contentType: type };
 }
 
+// ---------- 짤 모음: 짤(reaction)만 + ★·숨기기·복사 횟수 (meme_marks, SQL 007) ----------
+async function handleMemeList(env, ctx) {
+  const h = { headers: supabaseHeaders(env) };
+  const [imgRes, markRes, postRes, dates] = await Promise.all([
+    fetch(`${env.SUPABASE_URL}/rest/v1/post_images?select=id,post_id,image_url,description,tags,caption&kind=eq.reaction&order=post_id.desc,position.asc&limit=1000`, h),
+    fetch(`${env.SUPABASE_URL}/rest/v1/meme_marks?select=image_id,favorite,hidden,copy_count,last_copied_at&limit=2000`, h),
+    fetch(`${env.SUPABASE_URL}/rest/v1/my_insights?select=id,title,source_url&limit=1000`, h),
+    getPublishDates(ctx)
+  ]);
+  if (!imgRes.ok) throw new Error(`post_images HTTP ${imgRes.status}`);
+  const rows = await imgRes.json();
+  const marksReady = markRes.ok;   // 표(SQL 007)가 아직 없으면 표시 없이 동작
+  const marks = new Map((marksReady ? await markRes.json() : []).map(m => [m.image_id, m]));
+  const posts = new Map((postRes.ok ? await postRes.json() : []).map(p => [p.id, p]));
+  const memes = rows.map(r => {
+    const m = marks.get(r.id) || {};
+    const p = posts.get(r.post_id) || {};
+    return {
+      id: r.id, url: r.image_url, description: r.description, tags: r.tags, caption: r.caption,
+      post_title: p.title || '', published: p.source_url ? publishedOf(p, dates) : null,
+      favorite: !!m.favorite, hidden: !!m.hidden, copy_count: m.copy_count || 0, last_copied_at: m.last_copied_at || null
+    };
+  });
+  // ★ → 많이 복사한 순 → 최근 글 순
+  memes.sort((a, b) => (b.favorite - a.favorite) || (b.copy_count - a.copy_count) || 0);
+  return { status: 200, json: { memes, marks_ready: marksReady } };
+}
+
+async function handleMemeMark(body, env) {
+  const id = Number(body.image_id);
+  if (!Number.isInteger(id) || id <= 0) return { status: 400, json: { error: 'image_id가 올바르지 않습니다.' } };
+  const base = `${env.SUPABASE_URL}/rest/v1/meme_marks`;
+  const headers = { ...supabaseHeaders(env), 'Content-Type': 'application/json' };
+  const cur = await fetch(`${base}?select=favorite,hidden,copy_count&image_id=eq.${id}`, { headers });
+  if (!cur.ok) {
+    const t = await cur.text();
+    if (/meme_marks/.test(t)) return { status: 503, json: { error: '짤 표시를 저장할 표가 아직 없습니다 (SQL 007 실행 필요).', code: 'marks_table_missing' } };
+    throw new Error(`meme_marks HTTP ${cur.status}`);
+  }
+  const prev = (await cur.json())[0] || { favorite: false, hidden: false, copy_count: 0 };
+  const row = { image_id: id, favorite: prev.favorite, hidden: prev.hidden, copy_count: prev.copy_count, updated_at: new Date().toISOString() };
+  if (typeof body.favorite === 'boolean') row.favorite = body.favorite;
+  if (typeof body.hidden === 'boolean') row.hidden = body.hidden;
+  if (body.copied === true) { row.copy_count = (prev.copy_count || 0) + 1; row.last_copied_at = row.updated_at; }
+  const res = await fetch(`${base}?on_conflict=image_id`, {
+    method: 'POST', headers: { ...headers, Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(row)
+  });
+  if (!res.ok) throw new Error(`짤 표시 저장 실패 (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`);
+  return { status: 200, json: { mark: (await res.json())[0] || row } };
+}
+
 export async function handleImageRequest(body, env, ctx) {
   if (body.type === 'image_search') return handleSearch(body, env, ctx);
   if (body.type === 'image_fetch') return handleFetch(body);
+  if (body.type === 'meme_list') return handleMemeList(env, ctx);
+  if (body.type === 'meme_mark') return handleMemeMark(body, env);
   return { status: 400, json: { error: 'unknown type' } };
 }

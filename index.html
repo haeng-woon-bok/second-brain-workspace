@@ -164,21 +164,24 @@
     .slot .d { flex:1; min-width:180px; color:var(--ink); }
     .slot .h { font-size:12px; color:var(--faint); }
 
-    /* 내 이미지 보관함 */
+    /* 짤 모음 */
     .modal.lib .box { display:flex; flex-direction:column; gap:12px; }
     .lib .search { display:flex; gap:8px; }
     .lib .search input { flex:1; font:inherit; font-size:14px; color:var(--ink); background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:7px 10px; }
-    .lib .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; }
-    .lib .im { border:1px solid var(--line); border-radius:var(--radius); background:var(--sunken); cursor:pointer; display:flex; flex-direction:column; overflow:hidden; text-align:left; padding:0; font:inherit; color:inherit; }
+    .lib .sec { font-size:13px; font-weight:600; color:var(--ink); margin:8px 0 2px; }
+    .lib .sec .muted { font-weight:400; }
+    .lib .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:12px; }
+    .lib .im { border:1px solid var(--line); border-radius:var(--radius); background:var(--sunken); display:flex; flex-direction:column; overflow:hidden; }
     .lib .im:hover { border-color:var(--sub); }
-    .lib .im .ph { aspect-ratio:4/3; background:#e9e3d6; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .lib .im.hid { opacity:.55; }
+    .lib .im .ph { aspect-ratio:4/3; background:#e9e3d6; display:flex; align-items:center; justify-content:center; overflow:hidden; border:0; padding:0; cursor:pointer; width:100%; }
     .lib .im img { width:100%; height:100%; object-fit:contain; }
     .lib .im .tx { padding:8px 10px; font-size:12.5px; line-height:1.5; display:flex; flex-direction:column; gap:4px; }
     .lib .im .ds { color:var(--ink); }
-    .lib .im .tg { color:var(--sub); font-size:11.5px; }
     .lib .im .pt { color:var(--faint); font-size:11.5px; }
-    .lib .chips { display:flex; gap:6px; flex-wrap:wrap; font-size:12px; }
-    .lib .chips button { font:inherit; border:1px solid var(--line); background:transparent; color:var(--sub); border-radius:2px; padding:1px 8px; cursor:pointer; }
+    .lib .im .acts { display:flex; gap:6px; margin-top:2px; }
+    .lib .im .acts button { font:inherit; font-size:11.5px; border:1px solid var(--line); background:transparent; color:var(--sub); border-radius:2px; padding:1px 7px; cursor:pointer; }
+    .lib .im .acts button.star.on { color:var(--accent); border-color:var(--accent); font-weight:600; }
 
     /* 창(모달) 공통 */
     .modal { position:fixed; inset:0; background:rgba(20,18,15,.45); display:flex; align-items:flex-start; justify-content:center; padding:40px 16px; z-index:50; overflow:auto; }
@@ -332,7 +335,7 @@
         <button class="fb" onclick="fmtHeading()" title="커서가 있는 줄을 소제목으로">소제목</button>
         <button class="fb" onclick="fmtDivider()" title="커서 아래에 가운데 구분선">구분선</button>
         <button class="fb" onclick="fmtImageSlot()" title="커서 아래에 이미지 자리 표시 (짤·사진·도표)">이미지 자리</button>
-        <button class="fb" onclick="openLibrary('')" title="예전 글에 넣었던 이미지에서 찾아 복사">내 이미지</button>
+        <button class="fb" onclick="openLibrary('')" title="예전 글에 썼던 짤을 골라 복사">짤 모음</button>
         <span class="fsp"></span>
         <button class="fb" id="btn-preview" onclick="togglePreview()">미리보기</button>
       </div>
@@ -370,13 +373,12 @@
 
   <div id="lib-modal" class="modal lib hidden" onclick="if (event.target === this) closeLibrary()">
     <div class="box">
-      <h4><span>내 이미지 · 예전 글에 넣었던 이미지</span><button class="link" onclick="closeLibrary()">닫기 ✕</button></h4>
+      <h4><span>짤 모음 · 예전 글에 썼던 짤</span><button class="link" onclick="closeLibrary()">닫기 ✕</button></h4>
       <div class="search">
-        <input id="lib-q" placeholder="감정이나 상황으로 찾기 (예: 안도, 멘붕, 계약, 아이)" oninput="scheduleLibrarySearch()" onkeydown="if (event.key === 'Enter') runLibrarySearch()">
+        <input id="lib-q" placeholder="설명으로 찾기 (예: 끝났다, 좌절, 고민) — 비워 두면 전체" oninput="renderMemes()">
       </div>
-      <div class="chips" id="lib-chips"></div>
       <div class="status" id="lib-status"></div>
-      <div class="grid" id="lib-grid"></div>
+      <div id="lib-grid"></div>
     </div>
   </div>
 
@@ -1175,56 +1177,117 @@
         IMAGE_SLOTS.map((s, i) => {
           let acts = '';
           if (s.kind === 'explain') acts = `<span class="h">표·그래프 자리 — 기사 그래픽이나 직접 만든 이미지를 넣으세요</span>`;
-          else if (s.kind === 'personal') acts = `<span class="h">내 사진·캡처를 넣는 자리</span><button class="btn-sec btn-xs" onclick="openLibrary(IMAGE_SLOTS[${i}].desc)">예전 이미지</button>`;
-          else acts = `<button class="btn-sec btn-xs" onclick="openLibrary(IMAGE_SLOTS[${i}].search || IMAGE_SLOTS[${i}].desc)">내 이미지에서</button>` + imageSearchLinks(s.search || s.desc);
+          else if (s.kind === 'personal') acts = `<span class="h">내 사진·캡처를 넣는 자리</span>`;
+          else acts = `<button class="btn-sec btn-xs" onclick="openLibrary(IMAGE_SLOTS[${i}].search || IMAGE_SLOTS[${i}].desc)">짤 모음에서</button>` + imageSearchLinks(s.search || s.desc);
           return `<div class="slot"><span class="k">${escapeHtml(s.label)}</span><span class="d">${escapeHtml(s.desc)}</span>${acts}</div>`;
         }).join('');
     }
 
 
-    // ---------- 내 이미지 보관함 (예전 글 이미지 + AI 설명·감정 태그) ----------
-    const LIB_CHIPS = ['안도', '멘붕', '기쁨', '걱정', '분노', '허탈', '감동', '짤', '캡처', '도표', '아이', '계약', '재개발', '코인'];
-    let LIB_RESULTS = [];
-    let libTimer = null, libSeq = 0;
-    function openLibrary(q) {
+    // ---------- 짤 모음 (예전 글의 짤 + ★ 자주 쓰는 짤 · 숨기기 · 복사 횟수) ----------
+    // 짤은 수십 장뿐이라 한 번에 다 불러와 화면에서 바로 거름. ★·숨기기·복사 횟수는 meme_marks(SQL 007)에 저장
+    let MEMES = [], memesLoaded = false, marksReady = false, showHiddenMemes = false;
+    const MEME_SYNONYMS = [
+      ['안도', '후련', '끝', '해방', '다행', '휴'], ['멘붕', '충격', '당황', '혼란', '황당', '어이'],
+      ['기쁨', '행복', '신남', '환호', '축하', '감격'], ['걱정', '불안', '고민', '초조', '긴장'],
+      ['분노', '화남', '짜증', '억울'], ['허탈', '실망', '좌절', '우울', '슬픔', '절망'], ['감동', '뭉클', '눈물', '고마움', '감사']
+    ];
+    async function openLibrary(q) {
       document.getElementById('lib-modal').classList.remove('hidden');
-      document.getElementById('lib-chips').innerHTML = LIB_CHIPS.map(c => `<button onclick="setLibraryQuery('${c}')">${c}</button>`).join('');
-      setLibraryQuery(String(q || '').replace(/짤$/, '').trim());
+      document.getElementById('lib-q').value = String(q || '').replace(/짤$/, '').trim();
+      if (!memesLoaded) await loadMemes();
+      renderMemes();
     }
     function closeLibrary() { document.getElementById('lib-modal').classList.add('hidden'); }
-    function setLibraryQuery(q) { document.getElementById('lib-q').value = q; runLibrarySearch(); }
-    function scheduleLibrarySearch() { clearTimeout(libTimer); libTimer = setTimeout(runLibrarySearch, 350); }
-    async function runLibrarySearch() {
-      const q = document.getElementById('lib-q').value.trim();
-      const seq = ++libSeq;
-      const status = document.getElementById('lib-status'), grid = document.getElementById('lib-grid');
-      status.textContent = '찾는 중…';
+    async function loadMemes() {
+      const status = document.getElementById('lib-status');
+      status.textContent = '짤을 불러오는 중…';
       try {
-        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image_search', q, limit: 40 }) });
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'meme_list' }) });
         const data = await res.json();
-        if (seq !== libSeq) return;
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        if (data.unavailable) { status.textContent = '보관함 테이블이 아직 없습니다.'; grid.innerHTML = ''; return; }
-        LIB_RESULTS = data.images || [];
-        const progress = data.scanned_posts < data.all_posts ? ` · 글 ${data.all_posts}편 중 ${data.scanned_posts}편 정리됨 (매일 아침 이어서 정리)` : '';
-        status.textContent = (q ? `"${q}" ${LIB_RESULTS.length}장` : `최근 이미지 ${LIB_RESULTS.length}장`) + ` / 전체 ${data.total}장${progress} — 누르면 복사됩니다.`;
-        grid.innerHTML = LIB_RESULTS.length ? LIB_RESULTS.map((im, i) => `
-          <button class="im" onclick="copyLibraryImage(${i})" title="눌러서 이미지 복사">
-            <div class="ph"><img src="${escapeHtml(safeUrl(im.url + '?type=w386'))}" referrerpolicy="no-referrer" loading="lazy" alt=""></div>
-            <div class="tx">
-              <span class="ds">${escapeHtml(im.description || im.caption || '')}</span>
-              <span class="tg">${(im.tags || []).map(t => '#' + escapeHtml(t)).join(' ')}</span>
-              <span class="pt">${escapeHtml(decodeEntities(im.post_title || ''))}${im.published ? ' · ' + escapeHtml(im.published.replace(/-/g, '.')) : ''}</span>
-            </div>
-          </button>`).join('') : '<div class="empty">맞는 이미지가 없습니다. 다른 감정·상황 단어로 찾아보세요.</div>';
+        MEMES = data.memes || [];
+        marksReady = !!data.marks_ready;
+        memesLoaded = true;
       } catch (e) {
-        if (seq === libSeq) { status.textContent = `⚠️ 불러오지 못했습니다: ${e.message}`; grid.innerHTML = ''; }
+        status.textContent = `⚠️ 불러오지 못했습니다: ${e.message}`;
+      }
+    }
+    function memeMatches(m, q) {
+      const hay = `${m.description || ''} ${m.caption || ''} ${(m.tags || []).join(' ')}`;
+      return q.split(/[\s,]+/).filter(Boolean).every(t => {
+        const words = new Set([t]);
+        MEME_SYNONYMS.forEach(g => { if (g.some(w => t.includes(w) || w.includes(t))) g.forEach(w => words.add(w)); });
+        return [...words].some(w => hay.includes(w));
+      });
+    }
+    function memeCard(m) {
+      const i = MEMES.indexOf(m);
+      return `<div class="im${m.hidden ? ' hid' : ''}">
+        <button class="ph" onclick="copyMeme(${i})" title="눌러서 복사"><img src="${escapeHtml(safeUrl(m.url + '?type=w386'))}" referrerpolicy="no-referrer" loading="lazy" alt=""></button>
+        <div class="tx">
+          <span class="ds">${escapeHtml(m.description || m.caption || '')}</span>
+          <span class="pt">${escapeHtml(decodeEntities(m.post_title || ''))}${m.published ? ' · ' + escapeHtml(m.published.replace(/-/g, '.')) : ''}${m.copy_count ? ` · 복사 ${m.copy_count}회` : ''}</span>
+          <span class="acts">
+            <button class="star${m.favorite ? ' on' : ''}" onclick="toggleMemeMark(${i}, 'favorite')" title="자주 쓰는 짤에 넣기/빼기">${m.favorite ? '★ 자주 씀' : '☆ 자주 씀'}</button>
+            <button onclick="toggleMemeMark(${i}, 'hidden')" title="${m.hidden ? '다시 보이게' : '짤 모음에서 숨기기'}">${m.hidden ? '다시 보이기' : '숨기기'}</button>
+          </span>
+        </div>
+      </div>`;
+    }
+    function renderMemes() {
+      const status = document.getElementById('lib-status'), grid = document.getElementById('lib-grid');
+      if (!memesLoaded) return;
+      const q = document.getElementById('lib-q').value.trim();
+      const shown = MEMES.filter(m => !m.hidden);
+      const hidden = MEMES.filter(m => m.hidden);
+      const favs = shown.filter(m => m.favorite);
+      const section = (title, list) => list.length ? `<div class="sec">${title}</div><div class="grid">${list.map(memeCard).join('')}</div>` : '';
+      let html = '';
+      if (q) {
+        const hits = shown.filter(m => memeMatches(m, q));
+        html += hits.length ? section(`"${escapeHtml(q)}"와 맞는 짤 ${hits.length}장`, hits) : `<div class="sec">"${escapeHtml(q)}"와 맞는 짤이 없어 전체를 보여 드립니다.</div>`;
+      }
+      html += section(`★ 자주 쓰는 짤 ${favs.length}장`, favs);
+      html += section(`전체 ${shown.length - favs.length}장 <span class="muted">· 많이 복사한 순</span>`, shown.filter(m => !m.favorite));
+      if (hidden.length) {
+        html += `<div class="sec"><button class="link" onclick="showHiddenMemes = !showHiddenMemes; renderMemes()">숨긴 짤 ${hidden.length}장 ${showHiddenMemes ? '접기' : '보기'}</button></div>`;
+        if (showHiddenMemes) html += `<div class="grid">${hidden.map(memeCard).join('')}</div>`;
+      }
+      grid.innerHTML = html || '<div class="empty">아직 정리된 짤이 없습니다.</div>';
+      const note = !marksReady ? ' · ★·숨기기를 저장하려면 SQL 007 실행이 필요합니다'
+        : !getWorkKey() ? ' · ★·숨기기는 작업 키(⚿)를 설정해야 저장됩니다' : '';
+      status.textContent = `짤 ${shown.length}장 · ★ ${favs.length}장${hidden.length ? ` · 숨김 ${hidden.length}장` : ''} — 이미지를 누르면 복사됩니다${note}`;
+    }
+    async function saveMemeMark(m, patch) {
+      if (!marksReady || !getWorkKey()) return false;
+      const { status, data } = await draftApi('meme_mark', { image_id: m.id, ...patch });
+      if (status !== 200) throw new Error(data.error || `HTTP ${status}`);
+      return true;
+    }
+    async function toggleMemeMark(i, field) {
+      const m = MEMES[i];
+      if (!m) return;
+      if (!marksReady) { showToast('★·숨기기를 저장할 표가 아직 없습니다. SQL 007을 먼저 실행해 주세요.'); return; }
+      if (!getWorkKey()) { showToast('★·숨기기는 작업 키(⚿)를 설정해야 저장됩니다.'); return; }
+      m[field] = !m[field];
+      renderMemes();
+      try { await saveMemeMark(m, { [field]: m[field] }); }
+      catch (e) { m[field] = !m[field]; renderMemes(); showToast(`⚠️ 저장하지 못했습니다: ${e.message}`); }
+    }
+    async function copyMeme(i) {
+      const m = MEMES[i];
+      if (!m) return;
+      const ok = await copyImageItem(m);
+      if (ok) {
+        m.copy_count = (m.copy_count || 0) + 1;
+        saveMemeMark(m, { copied: true }).catch(e => console.warn('복사 횟수 저장 실패:', e));
+        renderMemes();
       }
     }
     // 네이버 이미지는 Worker를 거쳐 받아 PNG로 바꿔 클립보드에 (움직이는 GIF는 첫 장면만)
-    function copyLibraryImage(i) { return copyImageItem(LIB_RESULTS[i]); }
     async function copyImageItem(im) {
-      if (!im) return;
+      if (!im) return false;
       const png = (async () => {
         const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image_fetch', url: im.url }) });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1239,8 +1302,10 @@
       try {
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
         showToast(/\.gif$/i.test(im.url) ? '🖼️ 복사했습니다. 움직이는 이미지는 첫 장면만 복사됩니다.' : '🖼️ 이미지를 복사했습니다. 네이버 글의 해당 자리에 붙여 넣으세요.');
+        return true;
       } catch (e) {
         showToast(`⚠️ 이미지 복사 실패: ${e.message}`);
+        return false;
       }
     }
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLibrary(); });

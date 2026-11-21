@@ -9,7 +9,7 @@ import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './dra
 import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
-import { IMAGE_TYPES, handleImageRequest } from './images.js';
+import { IMAGE_TYPES, MARK_TYPES, handleImageRequest } from './images.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
@@ -116,6 +116,19 @@ export default {
     }
 
     if (IMAGE_TYPES.has(body.type)) {
+      // ★·숨기기·복사 횟수 저장은 작업 키가 맞을 때만
+      if (MARK_TYPES.has(body.type)) {
+        const auth = await checkWorkKey(request, env);
+        if (auth === 'not_configured') return jsonResponse({ error: '서버에 작업 키(WORK_KEY)가 아직 설정되지 않았습니다.', code: 'work_key_not_configured' }, 503);
+        if (auth !== 'ok') {
+          if (env.AI_LIMITER) {
+            const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+            const { success } = await env.AI_LIMITER.limit({ key: `auth:${ip}` });
+            if (!success) return jsonResponse({ error: '요청이 너무 많습니다. 1분 뒤 다시 시도해 주세요.' }, 429);
+          }
+          return jsonResponse({ error: '작업 키가 올바르지 않습니다.', code: 'work_key_invalid' }, 401);
+        }
+      }
       try {
         const r = await handleImageRequest(body, env, ctx);
         if (r.binary) return new Response(r.binary, { status: 200, headers: { ...corsHeaders, 'Content-Type': r.contentType, 'Cache-Control': 'private, max-age=3600' } });
