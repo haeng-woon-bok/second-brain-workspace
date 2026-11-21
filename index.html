@@ -197,6 +197,19 @@
     .dm-row .m { font-size:12px; color:var(--faint); margin-top:2px; }
     .dm-row.cur .m { color:var(--accent); }
     .btn-xs.danger { color:var(--bad); border-color:var(--bad-soft); }
+    /* 건의하기 */
+    #btn-feedback.hidden { display:none; }
+    .modal.fbm .box { width:min(640px,100%); }
+    .modal.fbm textarea { width:100%; font:inherit; font-size:14px; color:var(--ink); background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:8px 10px; resize:vertical; }
+    .modal.fbm .row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+    .fb-item { border-top:1px solid var(--line); padding:10px 0; font-size:13.5px; display:flex; flex-direction:column; gap:6px; }
+    .fb-item .m { white-space:pre-line; line-height:1.6; }
+    .fb-item .meta { font-size:12px; color:var(--faint); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .fb-item .st { font-size:11px; font-weight:600; padding:0 7px; border-radius:2px; background:var(--warn-soft); color:var(--warn); }
+    .fb-item.done .st { background:var(--good-soft); color:var(--good); }
+    .fb-item .rp { font-size:12.5px; background:var(--good-soft); border-radius:var(--radius); padding:6px 9px; white-space:pre-line; }
+    .fb-item .acts { display:flex; gap:6px; }
+    .fb-item .acts input { flex:1; min-width:0; font:inherit; font-size:12.5px; background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:3px 8px; color:var(--ink); }
     .actions { display:flex; gap:8px; align-items:center; }
     .actions .sp { flex:1; font-size:12px; color:var(--faint); }
 
@@ -269,6 +282,7 @@
       <span id="db-status" class="saved">이 브라우저에 저장</span>
     </div>
     <div class="hdr-right">
+      <button onclick="openFeedback()" id="btn-feedback" class="btn-sec btn-xs hidden" title="불편한 점이나 바라는 점을 남깁니다">건의하기</button>
       <button onclick="setWorkKey()" id="work-key-btn" class="icon-btn" title="작업 키 — 초안을 서버(DB)에 저장하려면 필요합니다">⚿</button>
       <button onclick="toggleTheme()" id="theme-toggle-btn" class="icon-btn" title="라이트/다크 전환">◐</button>
     </div>
@@ -382,6 +396,19 @@
     </div>
   </div>
 
+  <div id="fb-modal" class="modal fbm hidden" onclick="if (event.target === this) closeFeedback()">
+    <div class="box">
+      <h4><span>건의하기</span><button class="link" onclick="closeFeedback()">닫기 ✕</button></h4>
+      <textarea id="fb-text" rows="5" placeholder="불편했던 점, 이상하게 동작한 점, 있었으면 하는 기능을 편하게 적어 주세요.&#10;어느 화면에서 무엇을 눌렀는지 함께 적어 주시면 더 빨리 고칠 수 있습니다."></textarea>
+      <div class="row">
+        <span class="status" id="fb-ctx"></span>
+        <button class="btn btn-xs" onclick="sendFeedback()">보내기</button>
+      </div>
+      <div class="status" id="fb-status"></div>
+      <div id="fb-list"></div>
+    </div>
+  </div>
+
   <div id="draft-modal" class="modal dm hidden" onclick="if (event.target === this) closeDraftManager()">
     <div class="box">
       <h4><span>초안 정리</span><button class="link" onclick="closeDraftManager()">닫기 ✕</button></h4>
@@ -486,6 +513,8 @@
 
     // 서버가 알려 준 블로그(내 블로그 / 테스터 블로그)로 제목·글쓰기 링크를 맞춤
     function applyProfile(p) {
+      // 건의하기는 테스터 환경에서만
+      document.getElementById('btn-feedback').classList.toggle('hidden', STUDIO === 'main');
       if (!p || !/^[A-Za-z0-9_-]{2,40}$/.test(p.blog_id || '')) return;
       const label = STUDIO === 'main' ? p.blog_id : `${p.blog_name || p.blog_id} (테스트)`;
       document.getElementById('logo-blog').textContent = `· ${label}`;
@@ -1910,6 +1939,66 @@
       renderDraftSelect();
       setDbStatus(getWorkKey() ? '새 초안' : '이 브라우저에 저장', 'ok');
     }
+
+    // ---------- 건의하기 (테스터 환경: 남긴 건의는 그 환경 DB에, 작업 키 필요) ----------
+    let FEEDBACK = [];
+    function feedbackContext() {
+      const d = draftList.find(x => x.id === currentDraftId);
+      return {
+        draft_id: currentDraftId || null,
+        draft_title: document.getElementById('draft-title').value.trim() || (d && d.title) || '',
+        body_chars: bodyEl().value.length,
+        reviewed: !!reviewState,
+        news_title: selectedNews ? selectedNews.title : '',
+        screen: `${window.innerWidth}x${window.innerHeight}`,
+        ua: navigator.userAgent
+      };
+    }
+    async function openFeedback() {
+      if (!getWorkKey()) { showToast('건의를 남기려면 먼저 오른쪽 위 ⚿ 버튼으로 작업 키를 넣어 주세요.'); return; }
+      const c = feedbackContext();
+      document.getElementById('fb-ctx').textContent = `함께 저장: ${c.draft_title ? `초안 「${c.draft_title.slice(0, 20)}」` : '열린 초안 없음'}${c.reviewed ? ' · 첨삭함' : ''} · 화면 ${c.screen}`;
+      document.getElementById('fb-modal').classList.remove('hidden');
+      document.getElementById('fb-text').focus();
+      loadFeedback();
+    }
+    function closeFeedback() { document.getElementById('fb-modal').classList.add('hidden'); }
+    async function sendFeedback() {
+      const ta = document.getElementById('fb-text'), st = document.getElementById('fb-status');
+      const message = ta.value.trim();
+      if (message.length < 2) { st.textContent = '건의 내용을 적어 주세요.'; return; }
+      st.textContent = '보내는 중…';
+      const { status, data } = await draftApi('feedback_add', { message, context: feedbackContext() });
+      if (status !== 200) { st.textContent = `⚠️ 보내지 못했습니다: ${data.error || status}`; return; }
+      ta.value = '';
+      st.textContent = '✔ 건의를 남겼습니다. 고맙습니다!';
+      loadFeedback();
+    }
+    async function loadFeedback() {
+      const box = document.getElementById('fb-list');
+      const { status, data } = await draftApi('feedback_list');
+      if (status !== 200) { box.innerHTML = `<div class="status">⚠️ 목록을 불러오지 못했습니다: ${escapeHtml(data.error || String(status))}</div>`; return; }
+      FEEDBACK = data.feedback || [];
+      box.innerHTML = FEEDBACK.length ? `<div class="status" style="margin-top:6px">남긴 건의 ${FEEDBACK.length}개 · 처리 전 ${FEEDBACK.filter(f => f.status !== 'done').length}개</div>` + FEEDBACK.map((f, i) => `
+        <div class="fb-item${f.status === 'done' ? ' done' : ''}">
+          <div class="meta"><span class="st">${f.status === 'done' ? '처리함' : '접수'}</span>${escapeHtml(formatKstDate(f.created_at))}${f.context && f.context.draft_title ? ` · 초안 「${escapeHtml(f.context.draft_title.slice(0, 24))}」` : ''}</div>
+          <div class="m">${escapeHtml(f.message)}</div>
+          ${f.reply ? `<div class="rp"><b>답변</b> ${escapeHtml(f.reply)}</div>` : ''}
+          <div class="acts">
+            <input id="fb-reply-${i}" placeholder="답변 (운영자용)" value="${escapeHtml(f.reply || '')}">
+            <button class="btn-sec btn-xs" onclick="updateFeedback(${i}, { reply: document.getElementById('fb-reply-${i}').value })">답변 저장</button>
+            <button class="btn-sec btn-xs" onclick="updateFeedback(${i}, { status: '${f.status === 'done' ? 'new' : 'done'}' })">${f.status === 'done' ? '다시 열기' : '처리함'}</button>
+          </div>
+        </div>`).join('') : '<div class="status" style="margin-top:6px">아직 남긴 건의가 없습니다.</div>';
+    }
+    async function updateFeedback(i, patch) {
+      const f = FEEDBACK[i];
+      if (!f) return;
+      const { status, data } = await draftApi('feedback_update', { id: f.id, ...patch });
+      if (status !== 200) { showToast(`⚠️ 저장하지 못했습니다: ${data.error || status}`); return; }
+      loadFeedback();
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeFeedback(); });
 
     // ---------- 초안 정리 (열기·삭제) ----------
     // 삭제 = 서버에서 archived 표시 (목록에서 사라지고, 기록은 남아 되살릴 수 있음)

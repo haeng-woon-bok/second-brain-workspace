@@ -6,7 +6,8 @@
 
 import { supabaseHeaders } from './lib.js';
 
-export const DRAFT_TYPES = new Set(['drafts_list', 'draft_get', 'draft_save', 'draft_archive', 'review_decision']);
+// 작업 키가 있어야 하는 요청 (초안 + 건의하기)
+export const DRAFT_TYPES = new Set(['drafts_list', 'draft_get', 'draft_save', 'draft_archive', 'review_decision', 'feedback_add', 'feedback_list', 'feedback_update']);
 
 const LIMITS = { title: 300, memo: 20000, body: 30000, tags: 500 };
 
@@ -83,8 +84,48 @@ export function sanitizeDraft(input) {
 }
 
 // ---------- handlers ----------
+// 건의하기: 남길 때의 화면 정보는 정해진 항목만 짧게 저장
+function sanitizeFeedbackContext(c) {
+  const x = c && typeof c === 'object' ? c : {};
+  return {
+    draft_id: toId(x.draft_id),
+    draft_title: clip(x.draft_title, 120),
+    body_chars: Number.isFinite(Number(x.body_chars)) ? Math.max(0, Math.min(100000, Math.round(Number(x.body_chars)))) : null,
+    reviewed: !!x.reviewed,
+    news_title: clip(x.news_title, 200),
+    screen: clip(x.screen, 200),
+    ua: clip(x.ua, 200)
+  };
+}
+
 export async function handleDraftRequest(body, env) {
   switch (body.type) {
+    case 'feedback_add': {
+      const message = String(body.message || '').trim().slice(0, 2000);
+      if (message.length < 2) return { status: 400, json: { error: '건의 내용을 적어 주세요.' } };
+      const rows = await sb(env, 'feedback', {
+        method: 'POST', prefer: 'return=representation',
+        body: { message, context: sanitizeFeedbackContext(body.context) }
+      });
+      return { status: 200, json: { id: rows[0]?.id } };
+    }
+
+    case 'feedback_list': {
+      const rows = await sb(env, 'feedback?select=id,created_at,updated_at,message,context,status,reply&order=created_at.desc&limit=100');
+      return { status: 200, json: { feedback: rows } };
+    }
+
+    case 'feedback_update': {
+      const id = toId(body.id);
+      if (!id) return { status: 400, json: { error: 'id가 필요합니다.' } };
+      const patch = { updated_at: new Date().toISOString() };
+      if (['new', 'done'].includes(body.status)) patch.status = body.status;
+      if (body.reply !== undefined) patch.reply = clip(body.reply, 1000) || null;
+      const rows = await sb(env, `feedback?id=eq.${id}`, { method: 'PATCH', prefer: 'return=representation', body: patch });
+      if (!rows.length) return { status: 404, json: { error: '건의를 찾을 수 없습니다.' } };
+      return { status: 200, json: { feedback: rows[0] } };
+    }
+
     case 'drafts_list': {
       const rows = await sb(env,
         'drafts?select=id,title,memo,status,ai_ratio,updated_at,created_at&status=neq.archived&order=updated_at.desc&limit=50');
