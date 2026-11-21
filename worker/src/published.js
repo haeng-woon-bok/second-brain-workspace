@@ -3,7 +3,7 @@
 import { kstDate } from './news.js';
 
 const BLOG_ID = 'dad_luckyhappy';
-const CACHE_KEY = `https://cache.internal/naver-publish-dates/${BLOG_ID}`;
+const CACHE_KEY = `https://cache.internal/naver-publish-dates/${BLOG_ID}/public-v2`;
 const CACHE_TTL_SEC = 6 * 3600;
 const PER_PAGE = 30;
 const MAX_PAGES = 10;
@@ -30,8 +30,14 @@ async function fetchPage(page) {
   );
   if (!res.ok) throw new Error(`naver list HTTP ${res.status}`);
   const text = await res.text();
-  // 네이버 응답은 JSON 이스케이프가 깨진 경우가 있어 필요한 필드만 정규식으로 읽는다
-  const rows = [...text.matchAll(/"logNo"\s*:\s*"(\d+)"[^}]*?"addDate"\s*:\s*"([^"]*)"/g)].map(m => [m[1], m[2]]);
+  // 네이버 응답은 JSON 이스케이프가 깨진 경우가 있어 글 하나씩({...}) 필요한 필드만 정규식으로 읽는다
+  // 전체공개(openType "2") 글만 — 비공개·이웃공개 글은 발행일 목록에도, 서식 습관 분석에도 쓰지 않음
+  const field = (obj, k) => (obj.match(new RegExp(`"${k}"\\s*:\\s*"?([^",}]*)"?`)) || [])[1];
+  const rows = [...text.matchAll(/\{[^{}]*"logNo"[^{}]*\}/g)]
+    .map(m => m[0])
+    .filter(obj => field(obj, 'openType') === '2' && field(obj, 'isPostNotOpen') !== '1')
+    .map(obj => [field(obj, 'logNo'), field(obj, 'addDate') || ''])
+    .filter(([no]) => /^\d+$/.test(no || ''));
   const total = Number((text.match(/"totalCount"\s*:\s*"?(\d+)/) || [])[1] || 0);
   return { rows, total };
 }
