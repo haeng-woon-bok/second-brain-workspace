@@ -192,6 +192,22 @@
     .modal .form .row { display:flex; gap:6px; flex-wrap:wrap; }
     .modal .status { font-size:12.5px; color:var(--faint); }
     @media (max-width: 760px) { .modal .box { grid-template-columns:1fr; } }
+    .modal .form .hint { font-size:11.5px; color:var(--faint); }
+    .chart-ref { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+    .chart-ref .rh { font-size:12.5px; color:var(--sub); display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .chart-ref .rh b { color:var(--ink); font-weight:600; }
+    .chart-ref .rg { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:8px; }
+    .chart-ref .rg button { border:1px solid var(--line); border-radius:var(--radius); background:var(--sunken); padding:0; cursor:pointer; aspect-ratio:4/3; overflow:hidden; }
+    .chart-ref .rg button:hover { border-color:var(--sub); }
+    .chart-ref .rg img { width:100%; height:100%; object-fit:contain; display:block; }
+    /* 초안 정리 */
+    .modal.dm .box { display:flex; flex-direction:column; gap:10px; width:min(640px,100%); }
+    .dm-row { display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); padding:10px 0; font-size:13.5px; }
+    .dm-row .t { flex:1; min-width:0; }
+    .dm-row .t b { font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dm-row .m { font-size:12px; color:var(--faint); margin-top:2px; }
+    .dm-row.cur .m { color:var(--accent); }
+    .btn-xs.danger { color:var(--bad); border-color:var(--bad-soft); }
     .actions { display:flex; gap:8px; align-items:center; }
     .actions .sp { flex:1; font-size:12px; color:var(--faint); }
 
@@ -260,7 +276,7 @@
         <option value="">작업 키를 설정하면 초안 목록이 보입니다</option>
       </select>
       <button onclick="newDraft()" class="btn-sec btn-xs">새 초안</button>
-      <button onclick="archiveCurrentDraft()" id="btn-archive" class="btn-sec btn-xs" disabled>보관</button>
+      <button onclick="openDraftManager()" id="btn-archive" class="btn-sec btn-xs" disabled title="저장된 초안을 열거나 삭제합니다">초안 정리</button>
       <span id="db-status" class="saved">이 브라우저에 저장</span>
     </div>
     <div class="hdr-right">
@@ -372,20 +388,25 @@
       <div>
         <canvas id="chart-canvas"></canvas>
         <div class="status" id="chart-status"></div>
+        <div class="chart-ref" id="chart-ref"></div>
       </div>
       <div class="form">
         <label>모양
           <select id="chart-type" onchange="redrawChart()">
-            <option value="bars">막대 (숫자 비교)</option>
+            <option value="cards">카드 (핵심 숫자·키워드 2~4개)</option>
+            <option value="bars">막대 (숫자 크기 비교)</option>
             <option value="steps">단계 (일정·절차)</option>
+            <option value="compare">비교 (전/후, A/B 두 가지)</option>
             <option value="table">표 (항목 정리)</option>
           </select>
         </label>
         <label>제목 <input id="chart-title" oninput="redrawChart()"></label>
-        <label>단위 (막대일 때, 예: %, 억, 개월) <input id="chart-unit" oninput="redrawChart()"></label>
-        <label>항목 — 한 줄에 "이름 | 숫자 | 설명"
+        <label>단위 (숫자가 있을 때, 예: %, 억, 개월) <input id="chart-unit" oninput="redrawChart()"></label>
+        <label>항목 — 한 줄에 "🏠 이름 | 숫자 | 설명"
           <textarea id="chart-items" oninput="redrawChart()"></textarea>
+          <span class="hint">맨 앞 이모지는 아이콘이 됩니다. 비교는 두 줄, 설명에 특징을 " / "로 나눠 적으세요.</span>
         </label>
+        <label>💡 한 줄 정리 (그림 아래 강조 상자) <input id="chart-headline" oninput="redrawChart()"></label>
         <label>아래 작은 글씨 (출처·기준) <input id="chart-note" oninput="redrawChart()"></label>
         <div class="row">
           <button class="btn" onclick="copyChart()">이미지 복사</button>
@@ -406,6 +427,14 @@
       <div class="chips" id="lib-chips"></div>
       <div class="status" id="lib-status"></div>
       <div class="grid" id="lib-grid"></div>
+    </div>
+  </div>
+
+  <div id="draft-modal" class="modal dm hidden" onclick="if (event.target === this) closeDraftManager()">
+    <div class="box">
+      <h4><span>초안 정리</span><button class="link" onclick="closeDraftManager()">닫기 ✕</button></h4>
+      <div class="status">삭제한 초안은 목록에서 사라집니다. 서버에는 기록이 남아 있어 실수로 지워도 되살릴 수 있습니다.</div>
+      <div id="dm-list"></div>
     </div>
   </div>
 
@@ -1091,11 +1120,31 @@
 
     // ---------- 본문 서식 (==형광펜==, **굵게**, ## 소제목, --- 구분선) ----------
     function bodyEl() { return document.getElementById('refined-output'); }
+    // 편집 중 보고 있던 위치 유지: 가운데 칸과 본문 칸의 스크롤을 기억했다가 되돌림
+    function keepScroll(fn) {
+      const el = bodyEl(), col = el.closest('.col');
+      const colTop = col ? col.scrollTop : 0, elTop = el.scrollTop;
+      try { return fn(); }
+      finally { if (col) col.scrollTop = colTop; el.scrollTop = elTop; }
+    }
+    // 본문을 value로 바꾸되, 바뀐 부분만 갈아 끼움 (화면이 튀지 않고 Ctrl+Z로 되돌릴 수 있게)
     function applyBodyEdit(value, selStart, selEnd) {
       const el = bodyEl();
-      el.value = value;
-      el.focus();
-      el.setSelectionRange(selStart, selEnd ?? selStart);
+      keepScroll(() => {
+        const old = el.value;
+        el.focus({ preventScroll: true });
+        if (old !== value) {
+          let a = 0;
+          while (a < old.length && a < value.length && old[a] === value[a]) a++;
+          let b = 0;
+          while (b < old.length - a && b < value.length - a && old[old.length - 1 - b] === value[value.length - 1 - b]) b++;
+          el.setSelectionRange(a, old.length - b);
+          let ok = false;
+          try { ok = document.execCommand('insertText', false, value.slice(a, value.length - b)); } catch (e) {}
+          if (!ok || el.value !== value) el.value = value;
+        }
+        el.setSelectionRange(selStart, selEnd ?? selStart);
+      });
       handleBodyInput();
     }
     function fmtWrap(mark) {
@@ -1192,11 +1241,13 @@
         title: document.getElementById('chart-title').value.trim(),
         unit: document.getElementById('chart-unit').value.trim(),
         items: ChartCard.textToItems(document.getElementById('chart-items').value),
+        headline: document.getElementById('chart-headline').value.trim(),
         note: document.getElementById('chart-note').value.trim()
       };
     }
     function fillChartForm(spec) {
-      document.getElementById('chart-type').value = spec.type;
+      document.getElementById('chart-type').value = ChartCard.TYPES.includes(spec.type) ? spec.type : 'table';
+      document.getElementById('chart-headline').value = spec.headline || '';
       document.getElementById('chart-title').value = spec.title || '';
       document.getElementById('chart-unit').value = spec.unit || '';
       document.getElementById('chart-items').value = ChartCard.itemsToText(spec.items);
@@ -1217,6 +1268,7 @@
       currentChartSlot = slot;
       document.getElementById('chart-modal').classList.remove('hidden');
       document.getElementById('chart-head').textContent = `도표 만들기 · ${slot.desc}`;
+      if (!regenerate) renderChartRefs(slot);
       const status = document.getElementById('chart-status');
       if (!regenerate && CHART_CACHE.has(slot.desc)) {
         fillChartForm(CHART_CACHE.get(slot.desc)); redrawChart(); status.textContent = ''; return;
@@ -1240,6 +1292,30 @@
       }
     }
     function closeChart() { document.getElementById('chart-modal').classList.add('hidden'); currentChartSlot = null; }
+    // 도표 옆 참고 이미지: 내 예전 글의 도표·캡처 + 인포그래픽 검색 링크
+    let CHART_REFS = [];
+    async function renderChartRefs(slot) {
+      const box = document.getElementById('chart-ref');
+      const q = `${slot.desc} 인포그래픽`;
+      const links = `<a class="link" href="https://search.naver.com/search.naver?where=image&query=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer">네이버 이미지 ↗</a>
+        <a class="link" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer">구글 이미지 ↗</a>
+        <a class="link" href="https://www.pinterest.com/search/pins/?q=${encodeURIComponent(q)}" target="_blank" rel="noopener noreferrer">핀터레스트 ↗</a>`;
+      box.innerHTML = `<div class="rh"><b>참고 이미지</b> 다른 사람들의 인포그래픽: ${links}</div><div class="rh">내 예전 글의 도표·캡처를 찾는 중…</div>`;
+      CHART_REFS = [];
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image_search', q: `${slot.desc} 도표`, limit: 12 }) });
+        const data = await res.json();
+        if (currentChartSlot !== slot) return;
+        CHART_REFS = (data.images || []).filter(im => im.kind === 'chart' || im.kind === 'capture').slice(0, 6);
+        const grid = CHART_REFS.length
+          ? `<div class="rg">${CHART_REFS.map((im, i) => `<button onclick="copyImageItem(CHART_REFS[${i}])" title="${escapeHtml((im.description || '') + ' — 눌러서 복사')}"><img src="${escapeHtml(safeUrl(im.url + '?type=w386'))}" referrerpolicy="no-referrer" loading="lazy" alt=""></button>`).join('')}</div>`
+          : '';
+        box.innerHTML = `<div class="rh"><b>참고 이미지</b> 다른 사람들의 인포그래픽: ${links}</div>` +
+          (grid ? `<div class="rh">내 예전 글의 도표·캡처 (누르면 복사)</div>${grid}` : '');
+      } catch (e) {
+        if (currentChartSlot === slot) box.innerHTML = `<div class="rh"><b>참고 이미지</b> ${links}</div>`;
+      }
+    }
     async function copyChart() {
       try {
         await ChartCard.copyImage(document.getElementById('chart-canvas'));
@@ -1289,8 +1365,8 @@
       }
     }
     // 네이버 이미지는 Worker를 거쳐 받아 PNG로 바꿔 클립보드에 (움직이는 GIF는 첫 장면만)
-    async function copyLibraryImage(i) {
-      const im = LIB_RESULTS[i];
+    function copyLibraryImage(i) { return copyImageItem(LIB_RESULTS[i]); }
+    async function copyImageItem(im) {
       if (!im) return;
       const png = (async () => {
         const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'image_fetch', url: im.url }) });
@@ -1488,6 +1564,21 @@
       btn.disabled = true;
       btn.style.opacity = '0.7';
       btn.textContent = '첨삭 중...';
+      // 지난 첨삭에서 이미 수락·무시한 지적은 다시 달지 않도록 함께 보냄
+      const previous = reviewState
+        ? reviewState.comments.filter(c => reviewState.decisions[c.id]).map(c => ({
+            target: c.target, comment: c.comment, decision: reviewState.decisions[c.id],
+            ...(reviewState.decisions[c.id] === 'accepted' && c.suggestion ? { suggestion: c.suggestion } : {})
+          })).slice(0, 20)
+        : [];
+      const prevState = reviewState;
+      // 이전 결과는 바로 내리고 새로 받는 중임을 표시
+      reviewState = null;
+      reviewAcceptedChars = 0;
+      const panel = document.getElementById('review-panel');
+      panel.innerHTML = '<div class="rv-style">지금 본문으로 새로 첨삭하는 중입니다… (20초쯤 걸립니다)</div>';
+      panel.classList.remove('hidden');
+      document.getElementById('review-summary').textContent = '새로 첨삭하는 중…';
       try {
         // DB 저장을 쓰는 중이면 먼저 저장해 초안 id를 확보 (첨삭 이력 연결용)
         if (getWorkKey()) await flushDbSave();
@@ -1499,6 +1590,7 @@
             title: document.getElementById('draft-title').value.trim(),
             memo: document.getElementById('draft-memo').value.trim(),
             body,
+            previous,
             draft_id: currentDraftId || undefined
           })
         });
@@ -1507,9 +1599,14 @@
         if (data.review_save_error) console.warn('첨삭 이력 저장 실패:', data.review_save_error);
         reviewState = { ...data, decisions: {} };
         renderReview();
-        showToast(`🔍 첨삭 완료: 코멘트 ${data.comments.length}개`);
+        const round = prevState ? ' (새 결과)' : '';
+        showToast(`🔍 첨삭 완료${round}: 코멘트 ${data.comments.length}개` + (data.skipped_repeats ? ` · 이미 본 지적 ${data.skipped_repeats}개는 뺐습니다` : ''));
       } catch (err) {
         console.error('Review Error:', err);
+        // 실패하면 이전 결과를 다시 보여 줌
+        reviewState = prevState;
+        renderReview();
+        if (!prevState) document.getElementById('review-summary').textContent = REVIEW_HINT;
         showToast(`⚠️ 첨삭 실패: ${err.message}`);
       } finally {
         btn.disabled = false;
@@ -1598,15 +1695,19 @@
       if (!c || !c.suggestion) return;
       const idx = output.value.indexOf(c.target);
       if (idx < 0) { showToast('⚠️ 본문이 바뀌어 수정안을 적용할 수 없습니다.'); renderReview(); return; }
-      output.value = output.value.slice(0, idx) + c.suggestion + output.value.slice(idx + c.target.length);
       reviewAcceptedChars += c.suggestion.length;
       reviewState.decisions[id] = 'accepted';
-      handleBodyInput();
-      renderReview();
+      // 보고 있던 첨삭 카드 위치를 그대로 두고 본문만 바꿈
+      keepScroll(() => {
+        applyBodyEdit(output.value.slice(0, idx) + c.suggestion + output.value.slice(idx + c.target.length), idx, idx + c.suggestion.length);
+        renderReview();
+      });
+      // 본문 칸 안에서만 바뀐 문장 쪽으로 (페이지는 움직이지 않음)
+      const before = output.value.slice(0, idx).split('\n').length, total = output.value.split('\n').length;
+      output.scrollTop = Math.max(0, (before / total) * output.scrollHeight - output.clientHeight / 3);
+      output.blur();
       saveReviewDecisions();
-      output.focus();
-      output.setSelectionRange(idx, idx + c.suggestion.length);
-      showToast('✔ 수정안을 반영했습니다. 마음에 안 들면 Ctrl+Z 대신 직접 고쳐 주세요.');
+      showToast('✔ 수정안을 반영했습니다. 마음에 안 들면 본문에서 Ctrl+Z로 되돌릴 수 있습니다.');
     }
 
     function dismissReview(id) {
@@ -1718,7 +1819,8 @@
         if (currentDraftId && !draftList.some(d => d.id === currentDraftId)) setCurrentDraft(null, null);
         renderDraftSelect();
         select.disabled = false;
-        document.getElementById('btn-archive').disabled = !currentDraftId;
+        document.getElementById('btn-archive').disabled = !draftList.length;
+        if (!document.getElementById('draft-modal').classList.contains('hidden')) renderDraftManager();
         setDbStatus(currentDraftId ? 'DB 연결됨' : '새 초안', 'ok');
       } catch (e) {
         setDbStatus('DB 연결 실패', 'warn');
@@ -1748,7 +1850,6 @@
         if (id) { localStorage.setItem(LS.id, String(id)); localStorage.setItem(LS.ts, updatedAt || ''); }
         else { localStorage.removeItem(LS.id); localStorage.removeItem(LS.ts); }
       } catch (e) {}
-      document.getElementById('btn-archive').disabled = !id;
     }
 
     function collectDraft() {
@@ -1866,16 +1967,50 @@
       setDbStatus(getWorkKey() ? '새 초안' : '이 브라우저에 저장', 'ok');
     }
 
-    async function archiveCurrentDraft() {
-      if (!currentDraftId) return;
-      if (!confirm('이 초안을 보관할까요? 목록에서 사라지지만 DB에는 남아 있습니다.')) return;
-      await flushDbSave();
-      const { status, data } = await draftApi('draft_archive', { id: currentDraftId });
-      if (status !== 200) { showToast(`⚠️ 보관 실패: ${data.error || status}`); return; }
-      showToast('🗄️ 초안을 보관했습니다.');
-      await newDraft(true);
-      refreshDraftList();
+    // ---------- 초안 정리 (열기·삭제) ----------
+    // 삭제 = 서버에서 archived 표시 (목록에서 사라지고, 기록은 남아 되살릴 수 있음)
+    function draftName(d) { return (d.title || d.memo || '(제목 없음)').replace(/\s+/g, ' ').trim().slice(0, 60); }
+    function openDraftManager() {
+      if (!getWorkKey()) { showToast('작업 키를 설정하면 저장된 초안을 정리할 수 있습니다.'); return; }
+      renderDraftManager();
+      document.getElementById('draft-modal').classList.remove('hidden');
     }
+    function closeDraftManager() { document.getElementById('draft-modal').classList.add('hidden'); }
+    function renderDraftManager() {
+      const box = document.getElementById('dm-list');
+      if (!draftList.length) { box.innerHTML = '<div class="empty">저장된 초안이 없습니다.</div>'; return; }
+      const ST = { writing: '작성중', reviewed: '첨삭함', published: '발행' };
+      box.innerHTML = draftList.map(d => {
+        const cur = d.id === currentDraftId;
+        return `<div class="dm-row${cur ? ' cur' : ''}">
+          <div class="t"><b>${escapeHtml(draftName(d))}</b>
+            <div class="m">${escapeHtml(formatKstDate(d.updated_at))} · ${ST[d.status] || escapeHtml(d.status || '')}${cur ? ' · 지금 보고 있는 초안' : ''}</div></div>
+          ${cur ? '' : `<button class="btn-sec btn-xs" onclick="openDraftFromManager(${Number(d.id)})">열기</button>`}
+          <button class="btn-sec btn-xs danger" onclick="deleteDraft(${Number(d.id)})">삭제</button>
+        </div>`;
+      }).join('');
+    }
+    async function openDraftFromManager(id) {
+      closeDraftManager();
+      document.getElementById('draft-select').value = String(id);
+      await onDraftSelect(String(id));
+    }
+    async function deleteDraft(id) {
+      const d = draftList.find(x => x.id === id);
+      if (!d) return;
+      if (!confirm(`"${draftName(d)}" 초안을 삭제할까요?\n목록에서 사라집니다.`)) return;
+      const isCurrent = id === currentDraftId;
+      if (isCurrent) await flushDbSave();
+      const { status, data } = await draftApi('draft_archive', { id });
+      if (status !== 200) { showToast(`⚠️ 삭제 실패: ${data.error || status}`); return; }
+      draftList = draftList.filter(x => x.id !== id);
+      if (isCurrent) await newDraft(true);
+      renderDraftSelect();
+      renderDraftManager();
+      document.getElementById('btn-archive').disabled = !draftList.length;
+      showToast('🗑️ 초안을 삭제했습니다.');
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDraftManager(); });
 
     let decisionTimer = null;
     function saveReviewDecisions() {

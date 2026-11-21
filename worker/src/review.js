@@ -156,7 +156,11 @@ function buildPrompt(req, samples, stats, profile = DEFAULT_PROFILE) {
 - 코멘트는 중요한 것부터 최대 ${MAX_COMMENTS}개. 문제가 없으면 적게 다세요. 칭찬용 코멘트는 달지 마세요.
 - structure의 각 comment는 한 문장으로.
 
-# 자동 측정 결과 (참고)
+${req.previous.length ? `# 지난 첨삭에서 필자가 이미 처리한 지적 (다시 달지 마세요)
+같은 문장에 같은 취지의 지적을 반복하지 말고, 아직 다루지 않은 문제만 새로 찾으세요.
+${req.previous.map(p => `- [${p.decision === 'accepted' ? '수락해 고침' : '필자가 넘김'}] "${p.target.slice(0, 120)}" — ${p.comment.slice(0, 120)}`).join('\n')}
+
+` : ''}# 자동 측정 결과 (참고)
 본문 ${stats.chars}자, 평균 줄 길이 ${stats.avg_line}자(필자 평균 ${BASELINE.avgLine}자), 어미 비율 ~니다 ${stats.endings.nida}% / ~요 ${stats.endings.yo}% / 반말 ~다 ${stats.endings.plain_da}% (필자 평균 ${BASELINE.nida}% / ${BASELINE.yo}% / ${BASELINE.plainDa}%)
 
 # [필자 글] (문체 기준)
@@ -176,7 +180,14 @@ export async function handleReview(body, env, ctx) {
   const req = {
     title: String(body.title || '').trim(),
     body: String(body.body || ''),
-    memo: String(body.memo || '').trim()
+    memo: String(body.memo || '').trim(),
+    // 지난 첨삭에서 수락·무시한 지적 (재첨삭 때 반복 방지)
+    previous: (Array.isArray(body.previous) ? body.previous : []).slice(0, 20).map(p => ({
+      target: String(p?.target || '').slice(0, 600),
+      comment: String(p?.comment || '').slice(0, 300),
+      decision: p?.decision === 'accepted' ? 'accepted' : 'dismissed',
+      suggestion: String(p?.suggestion || '').slice(0, 1200)
+    })).filter(p => p.target)
   };
   if (req.body.trim().length < 50) {
     return { status: 400, json: { error: '첨삭할 본문이 너무 짧습니다 (50자 이상).' } };
@@ -203,7 +214,11 @@ export async function handleReview(body, env, ctx) {
     };
   }
 
-  const comments = validateComments(req.body, out.comments);
+  // 필자가 넘긴 문장, 이미 수락해 고친 문장에 또 달린 지적은 뺌
+  const norm = s => String(s).replace(/\s+/g, ' ').trim();
+  const seen = new Set(req.previous.flatMap(p => [p.decision === 'dismissed' ? norm(p.target) : '', p.decision === 'accepted' ? norm(p.suggestion) : '']).filter(Boolean));
+  const all = validateComments(req.body, out.comments);
+  const comments = all.filter(c => !seen.has(norm(c.target)));
   return {
     status: 200,
     json: {
@@ -214,7 +229,8 @@ export async function handleReview(body, env, ctx) {
         ? `필자 글 ${profile.posts}편 자동 분석 (${profile.computed_at ? new Date(profile.computed_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) : '-'})`
         : '기본값 (74편 수동 분석)',
       // 위치를 못 찾았거나 개수 제한으로 버린 코멘트 수 (품질 점검용)
-      dropped: Math.max(0, (Array.isArray(out.comments) ? out.comments.length : 0) - comments.length)
+      dropped: Math.max(0, (Array.isArray(out.comments) ? out.comments.length : 0) - all.length),
+      skipped_repeats: all.length - comments.length
     }
   };
 }
