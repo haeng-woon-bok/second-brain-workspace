@@ -21,3 +21,14 @@ preview_urls = false
 name = "AI_LIMITER"
 namespace_id = "1001"
 simple = { limit = 10, period = 60 }
+
+# ---------- 테스터용 (한 벌 더): npx wrangler deploy --env tester ----------
+# 이름이 다른 별도 Worker(studio-tester)로 배포되고, 비밀 값·DB도 따로 씁니다.
+# 비밀 값: npx wrangler secret put <이름> --env tester  (SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY, WORK_KEY)
+[env.tester]
+name = "studio-tester"
+
+[[env.tester.ratelimits]]
+name = "AI_LIMITER"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }
