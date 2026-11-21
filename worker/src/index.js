@@ -9,7 +9,7 @@ import { DRAFT_TYPES, checkWorkKey, handleDraftRequest, saveReview } from './dra
 import { NEWS_TYPES, handleNewsRequest, kstDate } from './news.js';
 import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
-import { handleImageChart } from './chart.js';
+import { handleImageChart, handleSourceFetch } from './chart.js';
 import { IMAGE_TYPES, handleImageRequest } from './images.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
@@ -133,6 +133,13 @@ export default {
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
       }
+    }
+
+    // 도표 출처 기사 원문 (구글 검색 근거 링크만) — 숫자 대조는 웹이 함
+    if (body.type === 'source_fetch') {
+      const r = await handleSourceFetch(body);
+      if (r.binary) return new Response(r.binary, { status: 200, headers: { ...corsHeaders, 'Content-Type': r.contentType, ...r.headers, 'Access-Control-Expose-Headers': 'X-Final-Url' } });
+      return jsonResponse(r.json, r.status);
     }
 
     if (body.type === 'web_draft') {

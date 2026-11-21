@@ -193,6 +193,19 @@
     .modal .status { font-size:12.5px; color:var(--faint); }
     @media (max-width: 760px) { .modal .box { grid-template-columns:1fr; } }
     .modal .form .hint { font-size:11.5px; color:var(--faint); }
+    .chart-research { margin-top:12px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--sub); }
+    .chart-research:empty { display:none; }
+    .chart-research .rs-h { color:var(--ink); font-weight:600; }
+    .chart-research .rs-q { color:var(--faint); font-weight:400; }
+    .chart-research .ck { display:flex; gap:6px; line-height:1.5; }
+    .chart-research .ck .m { flex:none; width:16px; }
+    .chart-research .ck.ok .m { color:var(--good); }
+    .chart-research .ck.warn { color:var(--ink); }
+    .chart-research .ck.warn .m { color:var(--warn); }
+    .chart-research .src { display:flex; gap:6px; line-height:1.5; }
+    .chart-research .src .n { flex:none; font-family:var(--mono, monospace); color:var(--faint); }
+    .chart-research .src a { color:var(--ink); }
+    .chart-research .src .d { color:var(--faint); }
     .chart-ref { margin-top:12px; display:flex; flex-direction:column; gap:8px; }
     .chart-ref .rh { font-size:12.5px; color:var(--sub); display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     .chart-ref .rh b { color:var(--ink); font-weight:600; }
@@ -388,32 +401,36 @@
       <div>
         <canvas id="chart-canvas"></canvas>
         <div class="status" id="chart-status"></div>
+        <div class="chart-research" id="chart-research"></div>
         <div class="chart-ref" id="chart-ref"></div>
       </div>
       <div class="form">
         <label>모양
           <select id="chart-type" onchange="redrawChart()">
             <option value="cards">카드 (핵심 숫자·키워드 2~4개)</option>
-            <option value="bars">막대 (숫자 크기 비교)</option>
-            <option value="steps">단계 (일정·절차)</option>
+            <option value="bars">막대 (순위·숫자 비교, 최대 10개)</option>
+            <option value="timeline">타임라인 (날짜를 실제 간격으로)</option>
+            <option value="steps">단계 (날짜 없는 절차)</option>
             <option value="compare">비교 (전/후, A/B 두 가지)</option>
             <option value="table">표 (항목 정리)</option>
           </select>
         </label>
-        <label>제목 <input id="chart-title" oninput="redrawChart()"></label>
+        <label>제목 (그림이 말하는 결론) <input id="chart-title" oninput="redrawChart()"></label>
+        <label>부제 (무엇에 대한 자료인지) <input id="chart-subtitle" oninput="redrawChart()"></label>
         <label>단위 (숫자가 있을 때, 예: %, 억, 개월) <input id="chart-unit" oninput="redrawChart()"></label>
         <label>항목 — 한 줄에 "🏠 이름 | 숫자 | 설명"
           <textarea id="chart-items" oninput="redrawChart()"></textarea>
-          <span class="hint">맨 앞 이모지는 아이콘이 됩니다. 비교는 두 줄, 설명에 특징을 " / "로 나눠 적으세요.</span>
+          <span class="hint">맨 앞 이모지는 아이콘, ★는 핵심 항목(타임라인 위쪽, 두 개면 사이 기간 자동 계산). 타임라인은 이름에 날짜(2021.7)를 넣고, 비교는 두 줄에 특징을 " / "로 나눠 적으세요.</span>
         </label>
         <label>💡 한 줄 정리 (그림 아래 강조 상자) <input id="chart-headline" oninput="redrawChart()"></label>
         <label>아래 작은 글씨 (출처·기준) <input id="chart-note" oninput="redrawChart()"></label>
         <div class="row">
           <button class="btn" onclick="copyChart()">이미지 복사</button>
           <button class="btn-sec" onclick="saveChart()">PNG 저장</button>
-          <button class="btn-sec" onclick="openChart(currentChartSlot, true)">AI로 다시</button>
+          <button class="btn-sec" onclick="openChart(currentChartSlot, true, 'research')" title="웹에서 자료를 다시 찾아 만듭니다">자료 찾아 다시</button>
+          <button class="btn-sec" onclick="openChart(currentChartSlot, true, 'body')" title="검색 없이 본문·메모 내용만으로 만듭니다">본문 내용만으로</button>
         </div>
-        <div class="status">숫자는 본문·메모에 있는 것만 씁니다. 틀린 곳은 여기서 고친 뒤 복사하세요.</div>
+        <div class="status">숫자는 본문·메모·찾은 기사에 있는 것만 씁니다. ⚠ 표시된 숫자는 기사 링크에서 직접 확인한 뒤 복사하세요.</div>
       </div>
     </div>
   </div>
@@ -1241,12 +1258,14 @@
         title: document.getElementById('chart-title').value.trim(),
         unit: document.getElementById('chart-unit').value.trim(),
         items: ChartCard.textToItems(document.getElementById('chart-items').value),
+        subtitle: document.getElementById('chart-subtitle').value.trim(),
         headline: document.getElementById('chart-headline').value.trim(),
         note: document.getElementById('chart-note').value.trim()
       };
     }
     function fillChartForm(spec) {
       document.getElementById('chart-type').value = ChartCard.TYPES.includes(spec.type) ? spec.type : 'table';
+      document.getElementById('chart-subtitle').value = spec.subtitle || '';
       document.getElementById('chart-headline').value = spec.headline || '';
       document.getElementById('chart-title').value = spec.title || '';
       document.getElementById('chart-unit').value = spec.unit || '';
@@ -1258,11 +1277,12 @@
       clearTimeout(chartDrawTimer);
       chartDrawTimer = setTimeout(() => {
         const spec = readChartForm();
-        if (currentChartSlot) CHART_CACHE.set(currentChartSlot.desc, spec);
+        if (currentChartSlot) { const c = CHART_CACHE.get(currentChartSlot.desc); CHART_CACHE.set(currentChartSlot.desc, { ...(c || {}), spec }); }
         ChartCard.draw(document.getElementById('chart-canvas'), spec);
       }, 150);
     }
-    async function openChart(i, regenerate = false) {
+    // 도표 = 스펙 + 자료 찾기 결과(출처, 숫자 확인). 같은 자리를 다시 열면 AI·검색을 다시 부르지 않음
+    async function openChart(i, regenerate = false, mode = 'research') {
       const slot = typeof i === 'number' ? IMAGE_SLOTS[i] : i;
       if (!slot) return;
       currentChartSlot = slot;
@@ -1270,26 +1290,128 @@
       document.getElementById('chart-head').textContent = `도표 만들기 · ${slot.desc}`;
       if (!regenerate) renderChartRefs(slot);
       const status = document.getElementById('chart-status');
-      if (!regenerate && CHART_CACHE.has(slot.desc)) {
-        fillChartForm(CHART_CACHE.get(slot.desc)); redrawChart(); status.textContent = ''; return;
+      const cached = CHART_CACHE.get(slot.desc);
+      if (!regenerate && cached && cached.spec) {
+        fillChartForm(cached.spec); redrawChart(); status.textContent = ''; renderResearch(cached.research); return;
       }
-      status.textContent = '본문에서 숫자와 순서를 뽑는 중…';
+      status.textContent = mode === 'research' ? '🔎 웹에서 자료를 찾고 그림 내용을 정리하는 중… (30초쯤 걸립니다)' : '본문에서 숫자와 순서를 뽑는 중…';
+      renderResearch(null);
       try {
         const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          type: 'image_chart', slot: slot.desc, body: bodyEl().value, memo: document.getElementById('draft-memo').value
+          type: 'image_chart', mode, slot: slot.desc, title: document.getElementById('draft-title').value,
+          body: bodyEl().value, memo: document.getElementById('draft-memo').value
         }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         if (currentChartSlot !== slot) return;
-        CHART_CACHE.set(slot.desc, data.chart);
+        const research = data.research ? buildResearchState(data.research, data.chart) : null;
+        CHART_CACHE.set(slot.desc, { spec: data.chart, research });
         fillChartForm(data.chart);
         redrawChart();
-        status.textContent = '';
+        status.textContent = research && research.error ? `⚠️ 웹 검색을 하지 못해 본문 내용으로만 만들었습니다: ${research.error}` : '';
+        renderResearch(research);
+        if (research && research.sources.length) verifyChartSources(slot, research);
       } catch (e) {
         status.textContent = `⚠️ 내용을 뽑지 못했습니다: ${e.message} — 오른쪽에 직접 적어도 됩니다.`;
         if (!document.getElementById('chart-items').value) fillChartForm({ type: 'table', title: slot.desc, items: [] });
         redrawChart();
       }
+    }
+
+    // ---------- 도표 자료 찾기: 출처 기사 원문과 숫자 대조 ----------
+    function buildResearchState(r, chart) {
+      return {
+        error: r.error || '', queries: r.queries || [],
+        sources: (r.sources || []).map(s => ({ ...s, state: 'loading', outlet: '', date: '', headline: '', final: '' })),
+        used: r.used || [],
+        unit: chart.unit || '',
+        autoNote: chart.note || '',
+        // 본문·메모에서 온 숫자는 이미 확인됨(ok), 검색 결과에서 온 숫자는 기사 원문과 대조 대기(pending)
+        checks: (chart.items || []).map(it => ({ label: it.label, item: it, src: it.src || 0, result: it.check === 'search' ? 'pending' : 'ok', miss: [] }))
+      };
+    }
+    function srcDate(s) {
+      const m = String(s || '').match(/(\d{4})[-.]?(\d{2})[-.]?(\d{2})/);
+      return m ? `${+m[2]}.${+m[3]}` : '';
+    }
+    async function fetchSourcePage(s) {
+      const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'source_fetch', url: s.url }) });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `HTTP ${res.status}`); }
+      const final = res.headers.get('X-Final-Url') || '';
+      const buf = await res.arrayBuffer();
+      let cs = ((res.headers.get('Content-Type') || '').match(/charset=["']?([\w-]+)/i) || [])[1];
+      if (!cs) cs = (new TextDecoder('latin1').decode(buf.slice(0, 5000)).match(/charset=["']?([\w-]+)/i) || [])[1];
+      let html;
+      try { html = new TextDecoder(cs || 'utf-8').decode(buf); } catch (e) { html = new TextDecoder().decode(buf); }
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const meta = (...sels) => { for (const q of sels) { const v = doc.querySelector(q)?.getAttribute('content'); if (v) return v.trim(); } return ''; };
+      let host = '';
+      try { host = new URL(final).hostname.replace(/^www\./, ''); } catch (e) {}
+      const date = meta('meta[property="article:published_time"]', 'meta[name="article:published_time"]', 'meta[property="og:regDate"]', 'meta[name="pubdate"]', 'meta[name="date"]', 'meta[itemprop="datePublished"]')
+        || (html.match(/"datePublished"\s*:\s*"([^"]+)"/) || [])[1] || '';
+      const headline = meta('meta[property="og:title"]') || doc.title || '';
+      const outlet = meta('meta[property="og:site_name"]', 'meta[name="application-name"]') || (headline.match(/\s[-|:]\s*([^-|:]{2,20})$/) || [])[1] || host || s.title;
+      doc.querySelectorAll('script,style,noscript').forEach(e => e.remove());
+      const text = ((doc.body && doc.body.textContent) || '').replace(/\s+/g, ' ');
+      return { final, outlet: outlet.trim(), date: srcDate(date), headline: headline.trim(), text };
+    }
+    async function verifyChartSources(slot, research) {
+      const pages = new Map();
+      await Promise.all(research.sources.slice(0, 8).map(async s => {
+        try {
+          const p = await fetchSourcePage(s);
+          Object.assign(s, { state: 'ok', outlet: p.outlet, date: p.date, headline: p.headline, final: p.final });
+          pages.set(s.n, p.text);
+        } catch (e) { s.state = 'fail'; s.error = e.message; }
+        if (currentChartSlot === slot) renderResearch(research);
+      }));
+      const own = `${document.getElementById('draft-title').value}\n${bodyEl().value}\n${document.getElementById('draft-memo').value}`;
+      // 항목마다 숫자가 모두 들어 있는 기사를 찾아 그 기사를 출처로 (AI가 붙인 출처 번호가 있으면 그 기사부터)
+      for (const c of research.checks) {
+        if (c.result !== 'pending') continue;
+        const order = [...pages.keys()].sort((a, b) => (b === c.src) - (a === c.src));
+        let best = null;
+        for (const n of order) {
+          const miss = ChartCard.missingNumbers(c.item, research.unit, `${own}\n${pages.get(n)}`);
+          if (!best || miss.length < best.miss.length) best = { n, miss };
+          if (!miss.length) break;
+        }
+        if (best && !best.miss.length) { c.result = 'verified'; c.src = best.n; c.miss = []; }
+        else { c.result = 'warn'; c.miss = best ? best.miss : ChartCard.missingNumbers(c.item, research.unit, own); }
+      }
+      research.used = [...new Set([...research.used, ...research.checks.filter(c => c.result === 'verified' && c.src).map(c => c.src)])];
+      // 출처 줄을 실제 언론사 이름·날짜로 (직접 고친 출처 줄은 그대로 둠)
+      const used = research.used.map(n => research.sources.find(s => s.n === n)).filter(s => s && s.state === 'ok');
+      const noteEl = document.getElementById('chart-note');
+      if (used.length && currentChartSlot === slot && (!noteEl.value.trim() || noteEl.value.trim() === research.autoNote)) {
+        const parts = [...new Set(used.map(s => `${s.outlet}${s.date ? `(${s.date})` : ''}`))];
+        noteEl.value = `자료: ${parts.join(' · ')}`;
+        research.autoNote = noteEl.value;
+        redrawChart();
+      }
+      if (currentChartSlot === slot) renderResearch(research);
+    }
+    function renderResearch(r) {
+      const box = document.getElementById('chart-research');
+      if (!r) { box.innerHTML = ''; return; }
+      if (r.error && !r.sources.length) { box.innerHTML = ''; return; }
+      const checking = r.sources.some(s => s.state === 'loading');
+      const ok = r.checks.filter(c => c.result === 'ok' || c.result === 'verified');
+      const warn = r.checks.filter(c => c.result === 'warn');
+      const pending = r.checks.filter(c => c.result === 'pending');
+      const head = `<div class="rs-h">숫자 확인 ${checking ? '<span class="rs-q">· 기사 원문과 대조하는 중…</span>' : `<span class="rs-q">· 확인 ${ok.length}개${warn.length ? ` · 확인 필요 ${warn.length}개` : ''}</span>`}</div>`;
+      const checks = [...warn.map(c => `<div class="ck warn"><span class="m">⚠</span><span>${escapeHtml(c.label)} — 기사 원문에서 ${escapeHtml(c.miss.join(', '))}을(를) 찾지 못했습니다. 출처 링크에서 직접 확인해 주세요.</span></div>`),
+        ...pending.map(c => `<div class="ck"><span class="m">…</span><span>${escapeHtml(c.label)}</span></div>`),
+        ...ok.map(c => `<div class="ck ok"><span class="m">✓</span><span>${escapeHtml(c.label)}${c.result === 'verified' ? ' <span class="rs-q">기사에서 확인</span>' : ' <span class="rs-q">본문·메모</span>'}</span></div>`)].join('');
+      const srcs = r.sources.length ? `<div class="rs-h" style="margin-top:6px">찾은 자료 ${r.queries.length ? `<span class="rs-q">· 검색어: ${escapeHtml(r.queries.join(', '))}</span>` : ''}</div>` +
+        r.sources.map(s => {
+          const name = s.state === 'ok' ? `${s.outlet}${s.date ? ` · ${s.date}` : ''}` : s.title;
+          const head = s.state === 'ok' && s.headline ? ` <span class="d">${escapeHtml(s.headline.slice(0, 60))}</span>` : '';
+          const st = s.state === 'loading' ? ' <span class="d">(여는 중)</span>' : s.state === 'fail' ? ' <span class="d">(원문을 열지 못함 — 링크로 확인)</span>' : '';
+          const used = r.used.includes(s.n) ? ' <b>· 그림에 씀</b>' : '';
+          return `<div class="src"><span class="n">[${s.n}]</span><span><a href="${escapeHtml(safeUrl(s.final || s.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>${used}${head}${st}</span></div>`;
+        }).join('') : '';
+      box.innerHTML = head + checks + srcs;
     }
     function closeChart() { document.getElementById('chart-modal').classList.add('hidden'); currentChartSlot = null; }
     // 도표 옆 참고 이미지: 내 예전 글의 도표·캡처 + 인포그래픽 검색 링크

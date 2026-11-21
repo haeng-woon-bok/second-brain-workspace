@@ -11,7 +11,7 @@
   const SERIF = '"Noto Serif KR", "Nanum Myeongjo", serif';
   const EMOJI = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
   const W = 960, PAD = 56;
-  const TYPES = ['cards', 'bars', 'steps', 'compare', 'table'];
+  const TYPES = ['cards', 'bars', 'steps', 'timeline', 'compare', 'table'];
 
   function wrap(ctx, text, maxW) {
     const words = String(text || '').split(/(\s+)/);
@@ -38,6 +38,24 @@
   }
   const clampLines = (lines, n) => lines.length <= n ? lines : [...lines.slice(0, n - 1), lines[n - 1].replace(/.{1}$/, '…')];
   const fmtNum = (v) => (Math.round(v * 100) / 100).toLocaleString('ko-KR');
+  // 금액은 한국식으로: 72210 만원 → "7억 2,210만원"
+  function fmtValue(v, unit) {
+    const u = String(unit || '').replace(/\s/g, '');
+    const base = /^만원?$/.test(u) ? 1e4 : /^억원?$/.test(u) ? 1e8 : /^조원?$/.test(u) ? 1e12 : u === '원' ? 1 : null;
+    if (base !== null && Math.abs(v * base) >= 1e8) {
+      const won = v * base, jo = Math.trunc(won / 1e12), eok = Math.trunc((won % 1e12) / 1e8), man = Math.round(Math.abs(won % 1e8) / 1e4);
+      return [jo ? `${jo}조` : '', eok ? `${Math.abs(eok).toLocaleString('ko-KR')}억` : '', man ? `${man.toLocaleString('ko-KR')}만` : ''].filter(Boolean).join(' ') + '원';
+    }
+    return `${fmtNum(v)}${unit || ''}`;
+  }
+  // "2021.7 준공", "해석 A: 2026.12.30", "2024년 3월" → { y, m, d, t(연 단위 실수) }
+  function parseDate(s) {
+    const m = String(s || '').match(/(\d{4})(?:\s*[.\-/년]\s*(\d{1,2}))?(?:\s*[.\-/월]\s*(\d{1,2}))?/);
+    if (!m) return null;
+    const y = +m[1], mo = m[2] ? Math.min(12, Math.max(1, +m[2])) : 1, d = m[3] ? Math.min(31, Math.max(1, +m[3])) : 1;
+    return { y, m: mo, d, hasM: !!m[2], t: y + (mo - 1) / 12 + (d - 1) / 365 };
+  }
+  const MAX_ITEMS = { bars: 10, cards: 4, timeline: 8, steps: 6, compare: 2, table: 6 };
 
   function rr(c, x, y, w, h, r) {
     c.beginPath();
@@ -64,9 +82,11 @@
     const ops = [];
     let y = PAD;
     const innerW = W - PAD * 2;
-    const items = (spec.items || []).slice(0, 6);
+    let type = TYPES.includes(spec.type) ? spec.type : 'table';
+    if (type === 'timeline' && (spec.items || []).filter(it => parseDate(it.label)).length < 2) type = 'steps';
+    const items = (spec.items || []).slice(0, MAX_ITEMS[type] || 6);
     const unit = spec.unit || '';
-    const valueStr = (it) => (it.value === null || it.value === undefined || it.value === '') ? '' : `${fmtNum(Number(it.value))}${unit}`;
+    const valueStr = (it) => (it.value === null || it.value === undefined || it.value === '') ? '' : fmtValue(Number(it.value), unit);
 
     // 제목 + 형광펜
     ctx.font = `700 36px ${SERIF}`;
@@ -76,9 +96,15 @@
       const ty = y + 40 + i * 50;
       ops.push(c => { c.fillStyle = C.mark; c.fillRect(PAD - 6, ty - 15, tw + 12, 20); text(c, t, PAD, ty, `700 36px ${SERIF}`, C.ink); });
     });
-    y += 40 + (titleLines.length - 1) * 50 + 40;
-
-    const type = TYPES.includes(spec.type) ? spec.type : 'table';
+    y += 40 + (titleLines.length - 1) * 50;
+    if (spec.subtitle) {
+      ctx.font = `400 19px ${SANS}`;
+      const sl = clampLines(wrap(ctx, spec.subtitle, innerW), 2);
+      const sy = y;
+      ops.push(c => sl.forEach((t, j) => text(c, t, PAD, sy + 36 + j * 26, `400 19px ${SANS}`, C.sub)));
+      y += 20 + sl.length * 26;
+    }
+    y += 40;
 
     if (type === 'cards') {
       const n = items.length || 1;
@@ -116,31 +142,123 @@
       }
       y -= gap;
     } else if (type === 'bars') {
+      // 순위형 가로 막대: 이름은 오른쪽 정렬, 값은 막대 끝에 (항목이 많으면 촘촘하게)
       const max = Math.max(...items.map(it => Math.abs(Number(it.value) || 0)), 1);
-      const iconW = 64, labelW = 170, valueW = 120;
+      const dense = items.length > 5;
+      const hasIcon = items.some(it => it.icon);
+      const iconW = hasIcon ? (dense ? 44 : 60) : 0;
+      const lf = dense ? 19 : 22, vf = dense ? 21 : 25, barH = dense ? 26 : 32;
+      ctx.font = `700 ${lf}px ${SANS}`;
+      const labelW = Math.min(260, Math.max(120, ...items.map(it => ctx.measureText(it.label).width + 20)));
+      ctx.font = `800 ${vf}px ${SANS}`;
+      const valueW = Math.max(...items.map(it => ctx.measureText(valueStr(it) || '0').width)) + 20;
       const barW = innerW - iconW - labelW - valueW;
       items.forEach((it, i) => {
-        ctx.font = `700 22px ${SANS}`;
-        const ll = clampLines(wrap(ctx, it.label, labelW - 12), 2);
-        ctx.font = `400 17px ${SANS}`;
-        const tl = it.text ? clampLines(wrap(ctx, it.text, barW + valueW), 1) : [];
-        const rowH = Math.max(64, ll.length * 28 + 24) + (tl.length ? 24 : 0);
-        const top = y, cy = top + Math.max(64, ll.length * 28 + 24) / 2;
+        ctx.font = `700 ${lf}px ${SANS}`;
+        const ll = clampLines(wrap(ctx, it.label, labelW - 16), 2);
+        ctx.font = `400 16px ${SANS}`;
+        const tl = it.text && !dense ? clampLines(wrap(ctx, it.text, barW + valueW), 1) : [];
+        const base = Math.max(dense ? 42 : 56, ll.length * (lf + 6) + 14);
+        const rowH = base + (tl.length ? 22 : 0);
+        const top = y, cy = top + base / 2;
         const v = Number(it.value) || 0;
-        const bw = Math.max(14, barW * Math.abs(v) / max);
+        const bw = Math.max(10, barW * Math.abs(v) / max);
         const isMax = Math.abs(v) === max;
         ops.push(c => {
-          if (i % 2 === 0) { card(c, PAD - 12, top, innerW + 24, rowH, C.card, null, 14); }
-          iconBadge(c, PAD + 24, cy, 24, it.icon, String(i + 1));
-          ll.forEach((t, j) => text(c, t, PAD + iconW, cy + 8 - (ll.length - 1) * 14 + j * 28, `700 22px ${SANS}`, C.ink));
+          if (hasIcon) iconBadge(c, PAD + iconW / 2 - 4, cy, dense ? 17 : 23, it.icon, String(i + 1));
+          ll.forEach((t, j) => text(c, t, PAD + iconW + labelW - 16, cy + lf / 3 - (ll.length - 1) * (lf + 6) / 2 + j * (lf + 6), `700 ${lf}px ${SANS}`, C.ink, 'right'));
           const bx = PAD + iconW + labelW;
-          rr(c, bx, cy - 15, barW, 30, 15); c.fillStyle = C.track; c.fill();
-          rr(c, bx, cy - 15, bw, 30, 15); c.fillStyle = isMax ? C.accent : C.accentSoft; c.fill();
-          text(c, valueStr(it) || '0', bx + barW + valueW - 4, cy + 9, `800 26px ${SANS}`, isMax ? C.accent : C.ink, 'right');
-          if (tl.length) text(c, tl[0], bx, cy + 42, `400 17px ${SANS}`, C.sub);
+          rr(c, bx, cy - barH / 2, bw, barH, 4); c.fillStyle = isMax ? C.accent : C.accentSoft; c.fill();
+          text(c, valueStr(it) || '0', bx + bw + 12, cy + vf / 3, `800 ${vf}px ${SANS}`, isMax ? C.accent : C.ink);
+          if (tl.length) text(c, tl[0], bx, cy + barH / 2 + 20, `400 16px ${SANS}`, C.sub);
         });
-        y += rowH + 10;
+        y += rowH + (dense ? 6 : 10);
       });
+    } else if (type === 'timeline') {
+      // 실제 간격의 시간 축: 핵심(key)은 위, 나머지는 아래. 핵심 두 개 사이 기간은 프로그램이 계산
+      const pts = items.map(it => ({ it, d: parseDate(it.label) })).filter(p => p.d).sort((a, b) => a.d.t - b.d.t);
+      const keys = pts.filter(p => p.it.key);
+      pts.forEach((p, i) => { p.up = keys.length ? p.it.key : i % 2 === 0; });
+      const t0 = Math.floor(pts[0].d.t), t1 = Math.max(t0 + 1, Math.floor(pts[pts.length - 1].d.t) + 1);
+      const X = t => PAD + 24 + (t - t0) / (t1 - t0) * (innerW - 48);
+      const BW = 230;
+      // 글 상자 크기 재기
+      pts.forEach(p => {
+        ctx.font = `700 ${p.up ? 22 : 20}px ${SANS}`;
+        p.ll = clampLines(wrap(ctx, p.it.label, BW), 2);
+        ctx.font = `400 16px ${SANS}`;
+        p.tl = p.it.text ? clampLines(wrap(ctx, p.it.text, BW), 2) : [];
+        ctx.font = `700 ${p.up ? 22 : 20}px ${SANS}`;
+        const w1 = Math.max(...p.ll.map(t => ctx.measureText(t).width));
+        ctx.font = `400 16px ${SANS}`;
+        const w2 = p.tl.length ? Math.max(...p.tl.map(t => ctx.measureText(t).width)) : 0;
+        p.w = Math.max(w1, w2);
+        p.h = p.ll.length * (p.up ? 28 : 26) + p.tl.length * 22 + 6;
+        p.cx = Math.min(PAD + innerW - p.w / 2, Math.max(PAD + p.w / 2, X(p.d.t)));
+      });
+      // 겹치지 않게 줄 나누기
+      const rowsOf = (side) => {
+        const rows = [];
+        side.forEach(p => {
+          let r = rows.findIndex(row => row.every(q => Math.abs(q.cx - p.cx) > (q.w + p.w) / 2 + 16));
+          if (r < 0) { rows.push([]); r = rows.length - 1; }
+          rows[r].push(p); p.row = r;
+        });
+        return rows;
+      };
+      const upRows = rowsOf(pts.filter(p => p.up)), downRows = rowsOf(pts.filter(p => !p.up));
+      const rowH = (rows) => rows.map(row => Math.max(...row.map(p => p.h)) + 18);
+      const upH = rowH(upRows), downH = rowH(downRows);
+      const axisY = y + upH.reduce((s, h) => s + h, 0) + 34;
+      const span = t1 - t0, step = span <= 10 ? 1 : span <= 20 ? 2 : 5;
+      const ticks = [];
+      for (let yr = t0; yr <= t1; yr += step) ticks.push(yr);
+      const tickPad = 44;
+      pts.forEach(p => {
+        if (p.up) p.top = axisY - 34 - upH.slice(0, p.row + 1).reduce((s, h) => s + h, 0) + 18;
+        else p.top = axisY + tickPad + downH.slice(0, p.row).reduce((s, h) => s + h, 0) + 10;
+      });
+      // 그리는 순서: 축 → 연결선 → 점 → (종이색 바탕을 깐) 연도·글 — 연결선이 글 뒤로 지나가게
+      ops.push(c => {
+        c.strokeStyle = C.ink; c.lineWidth = 3; c.beginPath(); c.moveTo(PAD, axisY); c.lineTo(PAD + innerW, axisY); c.stroke();
+        ticks.forEach(yr => { const x = X(yr); c.lineWidth = 2; c.beginPath(); c.moveTo(x, axisY - 7); c.lineTo(x, axisY + 7); c.stroke(); });
+        pts.forEach(p => {
+          const dx = X(p.d.t);
+          c.strokeStyle = C.faint; c.lineWidth = 1.5; c.beginPath(); c.moveTo(dx, axisY);
+          c.lineTo(dx, p.up ? p.top + p.h - 4 : p.top - 6); c.stroke();
+        });
+        pts.forEach(p => { c.beginPath(); c.arc(X(p.d.t), axisY, p.up ? 11 : 9, 0, Math.PI * 2); c.fillStyle = p.it.key ? C.accent : C.ink; c.fill(); });
+        c.font = `400 16px ${SANS}`;
+        ticks.forEach(yr => {
+          const x = X(yr), w = c.measureText(String(yr)).width;
+          c.fillStyle = C.bg; c.fillRect(x - w / 2 - 4, axisY + 14, w + 8, 22);
+          text(c, String(yr), x, axisY + 30, `400 16px ${SANS}`, C.sub, 'center');
+        });
+        pts.forEach(p => {
+          c.fillStyle = C.bg; c.fillRect(p.cx - p.w / 2 - 6, p.top + 2, p.w + 12, p.h);
+          let yy = p.top;
+          p.ll.forEach(t => { yy += p.up ? 28 : 26; text(c, t, p.cx, yy - 6, `700 ${p.up ? 22 : 20}px ${SANS}`, p.it.key ? C.accent : C.ink, 'center'); });
+          p.tl.forEach(t => { yy += 22; text(c, t, p.cx, yy - 4, `400 16px ${SANS}`, C.sub, 'center'); });
+        });
+      });
+      y = axisY + tickPad + downH.reduce((s, h) => s + h, 0) + 10;
+      // 핵심 두 개 사이 기간
+      if (keys.length === 2) {
+        const [a, b] = keys.map(k => k.d).sort((p, q) => p.t - q.t);
+        const months = (b.y * 12 + b.m) - (a.y * 12 + a.m);
+        if (months > 0) {
+          const label = `약 ${Math.floor(months / 12) ? Math.floor(months / 12) + '년 ' : ''}${months % 12 ? (months % 12) + '개월 ' : ''}차이`;
+          const xa = X(a.t), xb = X(b.t), by = y + 30;
+          ops.push(c => {
+            c.strokeStyle = C.ink; c.lineWidth = 2; c.beginPath(); c.moveTo(xa + 4, by); c.lineTo(xb - 4, by); c.stroke();
+            c.fillStyle = C.ink;
+            c.beginPath(); c.moveTo(xa, by); c.lineTo(xa + 12, by - 7); c.lineTo(xa + 12, by + 7); c.closePath(); c.fill();
+            c.beginPath(); c.moveTo(xb, by); c.lineTo(xb - 12, by - 7); c.lineTo(xb - 12, by + 7); c.closePath(); c.fill();
+            text(c, label, (xa + xb) / 2, by - 14, `700 19px ${SANS}`, C.ink, 'center');
+          });
+          y = by + 16;
+        }
+      }
     } else if (type === 'steps' && items.length <= 4) {
       // 가로 흐름: 카드 → 화살표 → 카드
       const n = items.length || 1, arrowW = 36;
@@ -303,19 +421,64 @@
 
   // 편집창 텍스트 ↔ items ("🏠 이름 | 숫자 | 설명" 한 줄에 하나, 맨 앞 이모지는 아이콘)
   const ICON_RE = /^(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*)\s*/u;
+  // 맨 앞 ★ = 핵심 항목 (타임라인에서 위쪽에 굵게, 두 개면 사이 기간 표시)
   function itemsToText(items) {
-    return (items || []).map(it => [`${it.icon ? it.icon + ' ' : ''}${it.label}`, it.value ?? '', it.text || ''].join(' | ')).join('\n');
+    return (items || []).map(it => [`${it.key ? '★ ' : ''}${it.icon ? it.icon + ' ' : ''}${it.label}`, it.value ?? '', it.text || ''].join(' | ')).join('\n');
   }
   function textToItems(text) {
     return String(text || '').split('\n').map(l => l.split('|').map(s => s.trim())).filter(p => p[0])
-      .slice(0, 6).map(([first, value, ...rest]) => {
-        const m = first.match(ICON_RE);
+      .slice(0, 10).map(([first, value, ...rest]) => {
+        let s = first, key = false;
+        if (/^[★☆]/.test(s)) { key = true; s = s.replace(/^[★☆]\s*/, ''); }
+        const m = s.match(ICON_RE);
         const icon = m ? m[1] : '';
-        const label = m ? first.slice(m[0].length).trim() : first;
+        const label = m ? s.slice(m[0].length).trim() : s;
         const n = Number(String(value || '').replace(/,/g, ''));
-        return { icon, label: label || icon, value: value !== '' && value !== undefined && isFinite(n) ? n : null, text: rest.join(' | ') || (value && !isFinite(n) ? value : '') };
+        return { icon, key, label: label || icon, value: value !== '' && value !== undefined && isFinite(n) ? n : null, text: rest.join(' | ') || (value && !isFinite(n) ? value : '') };
       });
   }
 
-  global.ChartCard = { draw, copyImage, download, itemsToText, textToItems, TYPES };
+  // 숫자 대조용 (Worker chart.js와 같은 규칙): 값·숫자가 글에 적힐 수 있는 모양들
+  function valueForms(v, unit = '') {
+    const forms = new Set();
+    if (typeof v !== 'number' || !isFinite(v)) return [];
+    forms.add(String(v)); forms.add(v.toLocaleString('en-US'));
+    const u = String(unit).replace(/\s/g, '');
+    const base = /^만원?$/.test(u) ? 1e4 : /^억원?$/.test(u) ? 1e8 : /^조원?$/.test(u) ? 1e12 : u === '원' ? 1 : null;
+    if (base !== null) {
+      const won = v * base;
+      if (Math.abs(won) >= 1e8) {
+        const eok = Math.trunc(won / 1e8), man = Math.round(Math.abs(won % 1e8) / 1e4);
+        if (man) for (const m of [String(man), man.toLocaleString('en-US')]) for (const sp of ['', ' ']) forms.add(`${eok}억${sp}${m}`);
+        else forms.add(`${eok}억`);
+        const e = won / 1e8;
+        forms.add(`${Math.round(e * 10) / 10}억`); forms.add(`${Math.round(e * 100) / 100}억`);
+      } else if (Math.abs(won) >= 1e4) {
+        const man = won / 1e4;
+        forms.add(`${man}만`); forms.add(`${man.toLocaleString('en-US')}만`);
+      }
+    }
+    return [...forms];
+  }
+  function tokenForms(tok) {
+    const t = tok.replace(/[.,]$/, '');
+    const forms = new Set([t, t.replace(/,/g, '')]);
+    const d = t.match(/^(\d{4})\.(\d{1,2})(?:\.(\d{1,2}))?$/);
+    if (d) {
+      const [, y, m, dd] = d, m2 = m.padStart(2, '0');
+      forms.add(`${y}년 ${+m}월`); forms.add(`${y}.${m2}`); forms.add(`${y}-${m2}`); forms.add(`${y}. ${+m}`);
+      if (dd) { const d2 = dd.padStart(2, '0'); forms.add(`${y}년 ${+m}월 ${+dd}일`); forms.add(`${y}.${m2}.${d2}`); forms.add(`${y}-${m2}-${d2}`); forms.add(`${+m}월 ${+dd}일`); }
+    }
+    return [...forms];
+  }
+  // 항목의 숫자가 모두 text 안에 있는지 → 못 찾은 숫자 목록 (빈 배열이면 확인됨)
+  function missingNumbers(it, unit, text) {
+    const miss = [];
+    const has = forms => forms.some(f => f && text.includes(f));
+    if (typeof it.value === 'number' && !has(valueForms(it.value, unit))) miss.push(fmtValue(it.value, unit));
+    for (const f of ['label', 'text']) for (const tok of String(it[f] || '').match(/\d[\d,.]*/g) || []) if (!has(tokenForms(tok))) miss.push(tok.replace(/[.,]$/, ''));
+    return miss;
+  }
+
+  global.ChartCard = { draw, copyImage, download, itemsToText, textToItems, missingNumbers, fmtValue, TYPES };
 })(window);
