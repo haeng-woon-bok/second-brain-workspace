@@ -200,7 +200,8 @@
     /* 건의하기 */
     #btn-feedback { font:inherit; font-size:13px; font-weight:600; color:#3a2f00; background:#ffe46b; border:1px solid #e8c53a; border-radius:999px; padding:5px 14px; cursor:pointer; margin-right:6px; box-shadow:0 1px 0 rgba(0,0,0,.08); }
     #btn-feedback:hover { background:#ffd93b; }
-    #btn-feedback.hidden { display:none; }
+    #btn-feedback.hidden, #link-studio-main.hidden { display:none; }
+    #link-studio-main { font-size:12px; margin-right:10px; color:var(--faint); }
     .modal.fbm .box { width:min(640px,100%); }
     .modal.fbm textarea { width:100%; font:inherit; font-size:14px; color:var(--ink); background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:8px 10px; resize:vertical; }
     .modal.fbm .row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
@@ -284,6 +285,7 @@
       <span id="db-status" class="saved">이 브라우저에 저장</span>
     </div>
     <div class="hdr-right">
+      <a id="link-studio-main" class="link hidden" href="?studio=main" title="운영자용: 이 브라우저를 내 환경으로 되돌립니다">내 화면으로 ↩</a>
       <button onclick="openFeedback()" id="btn-feedback" class="hidden" title="불편한 점이나 바라는 점을 남깁니다">💬 건의하기</button>
       <button onclick="setWorkKey()" id="work-key-btn" class="icon-btn" title="작업 키 — 초안을 서버(DB)에 저장하려면 필요합니다">⚿</button>
       <button onclick="toggleTheme()" id="theme-toggle-btn" class="icon-btn" title="라이트/다크 전환">◐</button>
@@ -516,6 +518,8 @@
     // 서버가 알려 준 블로그(내 블로그 / 테스터 블로그)로 제목·글쓰기 링크를 맞춤
     // 건의하기는 테스터 환경에서만 — 서버 응답을 기다리지 않고 바로 보이게
     document.getElementById('btn-feedback').classList.toggle('hidden', STUDIO === 'main');
+    // 같은 브라우저에서 테스터 화면을 열어 본 운영자가 쉽게 돌아가도록
+    document.getElementById('link-studio-main').classList.toggle('hidden', STUDIO === 'main');
     function applyProfile(p) {
       if (!p || !/^[A-Za-z0-9_-]{2,40}$/.test(p.blog_id || '')) return;
       const label = STUDIO === 'main' ? p.blog_id : `${p.blog_name || p.blog_id} (테스트)`;
