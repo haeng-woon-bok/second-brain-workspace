@@ -30,8 +30,8 @@ name = "studio-tester"
 
 # 테스터 블로그 (ID를 받으면 바꿔서 다시 배포). 값이 없으면 내 블로그로 동작하므로 꼭 지정
 [env.tester.vars]
-BLOG_ID = "tester-pending"
-BLOG_NAME = "테스터"
+BLOG_ID = "pjdr0430"
+BLOG_NAME = "감자와 고구마 부부의 일상"
 
 [[env.tester.ratelimits]]
 name = "AI_LIMITER"
