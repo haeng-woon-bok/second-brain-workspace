@@ -80,8 +80,19 @@ export function computeStyleStats(body, profile = DEFAULT_PROFILE) {
   const pct = (k) => Math.round(ends[k] / n * 100);
   // 비율 경고는 문장이 충분할 때만 (짧은 글은 1~2문장으로 비율이 크게 튐)
   const enough = sentences.length >= 12;
-  if (ends.plainDa >= 3 && (pct('plainDa') > 10 || !enough)) notes.push(`반말 평서형(~한다/~이다) 문장 ${ends.plainDa}개 (${pct('plainDa')}%): 평소 글은 ${BASELINE.plainDa}%뿐이고 "~습니다"가 기본입니다.`);
-  if (enough && pct('yo') > 30) notes.push(`"~요"로 끝나는 문장 ${pct('yo')}%: 평소(${BASELINE.yo}%, 주로 "~는데요"와 질문)보다 많습니다.`);
+  if (isOwner()) {
+    if (ends.plainDa >= 3 && (pct('plainDa') > 10 || !enough)) notes.push(`반말 평서형(~한다/~이다) 문장 ${ends.plainDa}개 (${pct('plainDa')}%): 평소 글은 ${BASELINE.plainDa}%뿐이고 "~습니다"가 기본입니다.`);
+    if (enough && pct('yo') > 30) notes.push(`"~요"로 끝나는 문장 ${pct('yo')}%: 평소(${BASELINE.yo}%, 주로 "~는데요"와 질문)보다 많습니다.`);
+  } else {
+    // 다른 블로거: 그 사람 평소 비율보다 20%p 넘게 많은 어미만 알려 줌 (짧은 글은 평소 15% 미만인 어미가 3문장 이상일 때만)
+    const LABEL = { nida: '합쇼체(~습니다)', yo: '해요체(~요)', plainDa: '반말 평서형(~한다/~이다)' };
+    const base = { nida: BASELINE.nida, yo: BASELINE.yo, plainDa: BASELINE.plainDa };
+    const top = Object.keys(base).sort((a, b) => base[b] - base[a])[0];
+    for (const k of Object.keys(base)) {
+      const over = enough ? pct(k) > base[k] + 20 : (ends[k] >= 3 && base[k] < 15);
+      if (ends[k] && over) notes.push(`${LABEL[k]} 문장 ${ends[k]}개 (${pct(k)}%): 평소 글은 ${base[k]}%이고, 가장 많이 쓰는 어미는 ${LABEL[top]}(${base[top]}%)입니다.`);
+    }
+  }
   if (emoji > Math.max(0, Math.round(BASELINE.emojiPerPost))) notes.push(`이모지 ${emoji}개: 평소 글은 글당 ${BASELINE.emojiPerPost}개 수준입니다.`);
   if (markdown) notes.push(`마크다운 기호 ${markdown}곳: 네이버 블로그에 그대로 보이니 지워 주세요.`);
   if (gaps) notes.push(`아직 채우지 않은 [✍️ 보충 필요] ${gaps}곳`);
