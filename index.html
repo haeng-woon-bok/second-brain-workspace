@@ -197,6 +197,17 @@
     .dm-row .m { font-size:12px; color:var(--faint); margin-top:2px; }
     .dm-row.cur .m { color:var(--accent); }
     .btn-xs.danger { color:var(--bad); border-color:var(--bad-soft); }
+    /* 스레드용 만들기 */
+    .modal.thm .box { width:min(680px,100%); }
+    .th-row { display:flex; gap:6px; flex-wrap:wrap; }
+    .th-row input { flex:1; min-width:220px; font:inherit; font-size:13.5px; color:var(--ink); background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:6px 9px; }
+    .th-row input.bad { border-color:var(--bad); }
+    .th-row select { font:inherit; font-size:13px; color:var(--ink); background:var(--sunken); border:1px solid var(--line); border-radius:var(--radius); padding:5px 6px; }
+    .th-post { border:1px solid var(--line); border-radius:var(--radius); background:var(--panel); padding:12px 14px; margin-top:10px; display:flex; flex-direction:column; gap:8px; }
+    .th-post .tx { white-space:pre-wrap; font-size:14px; line-height:1.7; outline:none; }
+    .th-post .tx:focus { background:var(--sunken); }
+    .th-post .ft { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--faint); }
+    .th-post .ft .over { color:var(--bad); font-weight:600; }
     /* 건의하기 */
     #btn-feedback { font:inherit; font-size:13px; font-weight:600; color:#3a2f00; background:#ffe46b; border:1px solid #e8c53a; border-radius:999px; padding:5px 14px; cursor:pointer; margin-right:6px; box-shadow:0 1px 0 rgba(0,0,0,.08); }
     #btn-feedback:hover { background:#ffd93b; }
@@ -368,6 +379,7 @@
         <span id="review-summary" class="sp">논리·구조, 내 문체, 가독성을 봅니다.</span>
         <a class="link" id="link-postwrite" href="https://blog.naver.com/dad_luckyhappy/postwrite" target="_blank" rel="noopener noreferrer" title="네이버 블로그 글쓰기 창 열기">글쓰기 ↗</a>
         <button onclick="copyForNaver()" class="btn" title="형광펜·굵게·소제목·구분선·링크를 서식째 복사합니다">네이버용 복사</button>
+        <button onclick="openThreads()" class="btn-sec" title="블로그 발행 후, 스레드에 올릴 짧은 글을 만듭니다">스레드용 만들기</button>
       </div>
       <div id="review-panel" class="hidden" style="display:flex;flex-direction:column;gap:10px"></div>
     </section>
@@ -397,6 +409,23 @@
       </div>
       <div class="status" id="lib-status"></div>
       <div id="lib-grid"></div>
+    </div>
+  </div>
+
+  <div id="th-modal" class="modal thm hidden" onclick="if (event.target === this) closeThreads()">
+    <div class="box">
+      <h4><span>스레드용 만들기</span><button class="link" onclick="closeThreads()">닫기 ✕</button></h4>
+      <div class="status">블로그를 발행한 뒤, 발행된 글 주소를 넣고 만드세요. 주소는 마지막 게시물 끝에 붙습니다.</div>
+      <div class="th-row">
+        <input id="th-url" placeholder="발행한 블로그 글 주소 (https://blog.naver.com/...)" oninput="this.classList.remove('bad')">
+        <select id="th-tone">
+          <option value="polite">가벼운 존댓말 (~했어요)</option>
+          <option value="casual">편한 반말 (~했다)</option>
+        </select>
+        <button class="btn btn-xs" id="btn-th-make" onclick="makeThreads()">만들기</button>
+      </div>
+      <div class="status" id="th-status"></div>
+      <div id="th-posts"></div>
     </div>
   </div>
 
@@ -1838,6 +1867,7 @@
         tags: '',
         body: document.getElementById('refined-output').value,
         news: selectedNews ? { title: selectedNews.title, summary: selectedNews.summary, link: selectedNews.link } : null,
+        ...(currentPublishedUrl ? { published_url: currentPublishedUrl, status: 'published' } : {}),
         ...(lastAiRatio !== null ? { ai_ratio: lastAiRatio } : {})
       };
     }
@@ -1905,6 +1935,8 @@
         handleBodyInput();
         lastGeneratedBody = d.body || '';
         lastAiRatio = typeof d.ai_ratio === 'number' ? d.ai_ratio : null;
+        currentPublishedUrl = d.published_url || '';
+        THREAD_POSTS = []; document.getElementById('th-posts').innerHTML = '';
         renderDraftMeta(null);
         selectedNews = (d.news && d.news.title)
           ? { id: `saved_${d.id}`, sector: '저장된 뉴스', title: d.news.title, summary: d.news.summary || '', link: d.news.link || '#', idea: '' }
@@ -1945,6 +1977,61 @@
       renderDraftSelect();
       setDbStatus(getWorkKey() ? '새 초안' : '이 브라우저에 저장', 'ok');
     }
+
+    // ---------- 스레드용 만들기 (발행한 블로그 글 → 스레드 게시물 1~3개) ----------
+    // var: 초안 불러오기(applyDraft)가 이 줄보다 먼저 정의돼 있어도 안전하게
+    var currentPublishedUrl = '';   // 이 초안의 발행 주소 (작업 키가 있으면 초안에 함께 저장)
+    var THREAD_POSTS = [];
+    function openThreads() {
+      if (bodyEl().value.trim().length < 50) { showToast('스레드로 바꿀 본문을 먼저 써 주세요 (50자 이상).'); return; }
+      document.getElementById('th-url').value = currentPublishedUrl || '';
+      document.getElementById('th-modal').classList.remove('hidden');
+      if (!THREAD_POSTS.length) document.getElementById('th-status').textContent = '';
+      document.getElementById(currentPublishedUrl ? 'btn-th-make' : 'th-url').focus();
+    }
+    function closeThreads() { document.getElementById('th-modal').classList.add('hidden'); }
+    const charLen = (s) => [...String(s)].length;
+    async function makeThreads() {
+      const urlEl = document.getElementById('th-url'), st = document.getElementById('th-status'), btn = document.getElementById('btn-th-make');
+      const url = urlEl.value.trim();
+      if (url && !/^https?:\/\/\S+$/.test(url)) { urlEl.classList.add('bad'); st.textContent = '블로그 주소가 올바르지 않습니다.'; return; }
+      if (!url && !confirm('블로그 주소 없이 만들까요? (링크 없이 스레드 글만 만듭니다)')) { urlEl.focus(); return; }
+      if (url !== currentPublishedUrl) { currentPublishedUrl = url; scheduleDbSave(); }
+      btn.disabled = true; st.textContent = '스레드용 글을 만드는 중… (10초쯤)';
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          type: 'threads_draft', title: document.getElementById('draft-title').value, body: bodyEl().value,
+          blog_url: url, tone: document.getElementById('th-tone').value
+        }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        THREAD_POSTS = data.posts.map(p => p.text);
+        st.textContent = `게시물 ${THREAD_POSTS.length}개${THREAD_POSTS.length > 1 ? ' — 첫 게시물을 올린 뒤 나머지는 그 아래 답글(타래)로 이어 올리세요' : ''}. 글은 눌러서 바로 고칠 수 있습니다.` +
+          (data.image_hint ? ` · 같이 올리면 좋을 사진: ${data.image_hint}` : '');
+        renderThreads(data.limit || 500);
+      } catch (e) {
+        st.textContent = `⚠️ 만들지 못했습니다: ${e.message}`;
+      } finally { btn.disabled = false; }
+    }
+    function renderThreads(limit) {
+      document.getElementById('th-posts').innerHTML = THREAD_POSTS.map((t, i) => `
+        <div class="th-post">
+          <div class="tx" contenteditable="plaintext-only" oninput="THREAD_POSTS[${i}] = this.innerText; updateThreadCount(${i}, ${limit})">${escapeHtml(t)}</div>
+          <div class="ft"><span id="th-count-${i}">${i + 1}/${THREAD_POSTS.length} · ${charLen(t)}/${limit}자</span>
+            <button class="btn-sec btn-xs" onclick="copyThread(${i})">복사</button></div>
+        </div>`).join('');
+      THREAD_POSTS.forEach((_, i) => updateThreadCount(i, limit));
+    }
+    function updateThreadCount(i, limit) {
+      const el = document.getElementById(`th-count-${i}`), n = charLen(THREAD_POSTS[i]);
+      el.textContent = `${i + 1}/${THREAD_POSTS.length} · ${n}/${limit}자${n > limit ? ' — 너무 깁니다' : ''}`;
+      el.className = n > limit ? 'over' : '';
+    }
+    async function copyThread(i) {
+      try { await navigator.clipboard.writeText(THREAD_POSTS[i].trim()); showToast(`📋 ${i + 1}번째 게시물을 복사했습니다. 스레드에 붙여 넣으세요.`); }
+      catch (e) { showToast(`⚠️ 복사 실패: ${e.message}`); }
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeThreads(); });
 
     // ---------- 건의하기 (테스터 환경: 남긴 건의는 그 환경 DB에, 작업 키 필요) ----------
     let FEEDBACK = [];

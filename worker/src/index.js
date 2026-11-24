@@ -11,13 +11,14 @@ import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
 import { IMAGE_TYPES, MARK_TYPES, handleImageRequest } from './images.js';
 import { initProfile, profileInfo } from './profile.js';
+import { handleThreadsDraft } from './threads.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
 const ARCHIVE_LIMIT = 200;
 
 // Gemini를 호출하는 웹 요청 타입 (Rate Limiting 대상)
-const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests']);
+const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests', 'threads_draft']);
 
 export default {
   async fetch(request, env, ctx) {
@@ -135,6 +136,15 @@ export default {
         const r = await handleImageRequest(body, env, ctx);
         if (r.binary) return new Response(r.binary, { status: 200, headers: { ...corsHeaders, 'Content-Type': r.contentType, 'Cache-Control': 'private, max-age=3600' } });
         return jsonResponse(r.json, r.status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 502);
+      }
+    }
+
+    if (body.type === 'threads_draft') {
+      try {
+        const { status, json } = await handleThreadsDraft(body, env);
+        return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);
       }
