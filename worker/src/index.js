@@ -11,14 +11,14 @@ import { handlePostDigests } from './digests.js';
 import { getPublishDates, sortByPublished } from './published.js';
 import { IMAGE_TYPES, MARK_TYPES, handleImageRequest } from './images.js';
 import { initProfile, profileInfo } from './profile.js';
-import { handleThreadsDraft } from './threads.js';
+import { handleThreadsDraft, handleThreadsQueue, THREADS_TYPES, THREADS_KEY_TYPES } from './threads.js';
 
 // 아카이브 목록에 필요한 컬럼만 조회 (embedding·본문 전체 제외 → 응답 크기 대폭 감소)
 const ARCHIVE_COLUMNS = 'id,created_at,title,summary,tags,source_url';
 const ARCHIVE_LIMIT = 200;
 
 // Gemini를 호출하는 웹 요청 타입 (Rate Limiting 대상)
-const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests', 'threads_draft']);
+const AI_TYPES = new Set(['web_draft', 'review', 'research', 'related_posts', 'post_digests', 'threads_draft', 'threads_queue_build']);
 
 export default {
   async fetch(request, env, ctx) {
@@ -141,9 +141,30 @@ export default {
       }
     }
 
+    if (THREADS_TYPES.has(body.type)) {
+      if (THREADS_KEY_TYPES.has(body.type)) {
+        const auth = await checkWorkKey(request, env);
+        if (auth === 'not_configured') return jsonResponse({ error: '서버에 작업 키(WORK_KEY)가 아직 설정되지 않았습니다.', code: 'work_key_not_configured' }, 503);
+        if (auth !== 'ok') {
+          if (env.AI_LIMITER) {
+            const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+            const { success } = await env.AI_LIMITER.limit({ key: `auth:${ip}` });
+            if (!success) return jsonResponse({ error: '요청이 너무 많습니다. 1분 뒤 다시 시도해 주세요.' }, 429);
+          }
+          return jsonResponse({ error: '작업 키가 올바르지 않습니다.', code: 'work_key_invalid' }, 401);
+        }
+      }
+      try {
+        const { status, json } = await handleThreadsQueue(body, env, ctx);
+        return jsonResponse(json, status);
+      } catch (e) {
+        return jsonResponse({ error: e.message }, 502);
+      }
+    }
+
     if (body.type === 'threads_draft') {
       try {
-        const { status, json } = await handleThreadsDraft(body, env);
+        const { status, json } = await handleThreadsDraft(body, env, ctx);
         return jsonResponse(json, status);
       } catch (e) {
         return jsonResponse({ error: e.message }, 502);

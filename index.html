@@ -208,6 +208,23 @@
     .th-post .tx:focus { background:var(--sunken); }
     .th-post .ft { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--faint); }
     .th-post .ft .over { color:var(--bad); font-weight:600; }
+    .th-mark { display:flex; gap:10px; align-items:center; justify-content:space-between; margin-top:12px; padding-top:10px; border-top:1px solid var(--line); font-size:12.5px; color:var(--sub); }
+    .th-mark.hidden { display:none; }
+    .th-src { font-size:13px; color:var(--ink); background:var(--sunken); border-radius:var(--radius); padding:6px 10px; }
+    .tq-badge { margin-left:8px; font-family:var(--sans); font-size:11px; font-weight:600; color:var(--good); }
+    /* 스레드 순서 */
+    .modal.tqm .box { width:min(760px,100%); }
+    .tq-today { border:2px solid #e8c53a; background:#fff8d9; border-radius:var(--radius); padding:10px 14px; display:flex; gap:10px; align-items:center; justify-content:space-between; color:#2b2824; }
+    .tq-today b { font-weight:700; }
+    .tq-sec { margin-top:14px; font-size:13px; font-weight:600; color:var(--ink); display:flex; justify-content:space-between; }
+    .tq-sec .muted { font-weight:400; }
+    .tq-sub { font-size:12px; color:var(--sub); margin:8px 0 2px; }
+    .tq-row { display:flex; gap:10px; align-items:center; border-bottom:1px solid var(--line); padding:7px 0; font-size:13px; }
+    .tq-row .t { flex:1; min-width:0; }
+    .tq-row .t b { font-weight:500; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tq-row .m { font-size:11.5px; color:var(--faint); }
+    .tq-row.posted { opacity:.55; }
+    .tq-row .ok { font-size:11.5px; color:var(--good); font-weight:600; white-space:nowrap; }
     /* 건의하기 */
     #btn-feedback { font:inherit; font-size:13px; font-weight:600; color:#3a2f00; background:#ffe46b; border:1px solid #e8c53a; border-radius:999px; padding:5px 14px; cursor:pointer; margin-right:6px; box-shadow:0 1px 0 rgba(0,0,0,.08); }
     #btn-feedback:hover { background:#ffd93b; }
@@ -391,6 +408,7 @@
         <div class="search">
           <input id="archive-search" type="text" placeholder="예전에 쓴 글 찾기 (예: 금리, 재개발)" oninput="renderMemory()" />
           <button onclick="triggerSearchAll()" class="btn-sec btn-xs">전체</button>
+          <button onclick="openThreadsQueue()" class="btn-sec btn-xs" title="지난 글을 스레드에 올릴 순서와 올린 기록">스레드 순서</button>
         </div>
         <div class="mem-mode" id="mem-mode"></div>
       </div>
@@ -416,6 +434,7 @@
     <div class="box">
       <h4><span>스레드용 만들기</span><button class="link" onclick="closeThreads()">닫기 ✕</button></h4>
       <div class="status">블로그를 발행한 뒤, 발행된 글 주소를 넣고 만드세요. 주소는 마지막 게시물 끝에 붙습니다.</div>
+      <div class="th-src" id="th-src"></div>
       <div class="th-row">
         <input id="th-url" placeholder="발행한 블로그 글 주소 (https://blog.naver.com/...)" oninput="this.classList.remove('bad')">
         <select id="th-tone">
@@ -426,6 +445,19 @@
       </div>
       <div class="status" id="th-status"></div>
       <div id="th-posts"></div>
+      <div class="th-mark hidden" id="th-mark">
+        <span id="th-mark-text">스레드에 다 올리셨으면 표시해 두세요. "스레드 순서"와 내 글 기억에 ✓로 보입니다.</span>
+        <button class="btn btn-xs" id="btn-th-mark" onclick="markThreadsPosted()">스레드에 올렸어요 ✓</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tq-modal" class="modal tqm hidden" onclick="if (event.target === this) closeThreadsQueue()">
+    <div class="box">
+      <h4><span>스레드 순서 · 지난 글 올리기</span><button class="link" onclick="closeThreadsQueue()">닫기 ✕</button></h4>
+      <div class="status" id="tq-status"></div>
+      <div id="tq-today"></div>
+      <div id="tq-list"></div>
     </div>
   </div>
 
@@ -567,6 +599,7 @@
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         applyProfile(data.profile);
+        loadThreadsQueue();
 
         // 1. 가장 최근 뉴스 + 달력
         currentNewsDate = data.news_date || null;
@@ -1055,10 +1088,10 @@
           : '<span class="muted">요약을 만드는 중…</span>';
         return `<div class="mem">
           <div class="tt"><a href="#" onclick="openReader(${id});return false;">${escapeHtml(a.title)}</a></div>
-          <div class="dt">${escapeHtml(a.date.replace(/-/g, '.'))}</div>
+          <div class="dt">${escapeHtml(a.date.replace(/-/g, '.'))}${threadsBadge(id)}</div>
           <div class="ps">${sum}</div>
           ${d && d.keywords.length ? `<div class="kw">${d.keywords.map(k => `<span class="tag">${escapeHtml(k)}</span>`).join('')}</div>` : ''}
-          <div class="acts"><button class="link" onclick="openReader(${id})">전문 보기</button>${a.link ? `<button class="link" onclick="insertPostLink(${id})" title="본문 커서 아래에 이 글 링크 넣기">본문에 링크</button>` : ''}${a.link ? `<a class="link" href="${escapeHtml(safeUrl(a.link))}" target="_blank" rel="noopener noreferrer">네이버 ↗</a>` : ''}</div>
+          <div class="acts"><button class="link" onclick="openReader(${id})">전문 보기</button>${a.link ? `<button class="link" onclick="insertPostLink(${id})" title="본문 커서 아래에 이 글 링크 넣기">본문에 링크</button>` : ''}${a.link ? `<a class="link" href="${escapeHtml(safeUrl(a.link))}" target="_blank" rel="noopener noreferrer">네이버 ↗</a>` : ''}${a.link ? `<button class="link" onclick="openThreadsForPost(${id})" title="이 글을 스레드용 게시물로 만들기">스레드용</button>` : ''}</div>
         </div>`;
       }).join('');
       // 화면에 보이는 앞쪽 글부터 요약 요청
@@ -1982,33 +2015,148 @@
     // var: 초안 불러오기(applyDraft)가 이 줄보다 먼저 정의돼 있어도 안전하게
     var currentPublishedUrl = '';   // 이 초안의 발행 주소 (작업 키가 있으면 초안에 함께 저장)
     var THREAD_POSTS = [];
+    var THREAD_POST_ID = null;      // 지난 글에서 만들 때 그 글 id (null이면 지금 쓰는 초안)
+    var THREADS_QUEUE = new Map(), threadsQueueReady = false;
+    function setThreadsSource(postId) {
+      const urlEl = document.getElementById('th-url'), src = document.getElementById('th-src');
+      THREAD_POST_ID = postId;
+      const a = postId ? ARCHIVES_CACHE.find(x => x.id === postId) : null;
+      urlEl.readOnly = !!a;
+      urlEl.value = a ? (a.link || '') : (currentPublishedUrl || '');
+      src.innerHTML = a ? `지난 글: <b>${escapeHtml(a.title)}</b> <span class="muted">(${escapeHtml(a.date.replace(/-/g, '.'))})</span>` : '지금 쓰는 초안 (발행한 뒤 만드세요)';
+      document.getElementById('th-mark').classList.add('hidden');
+    }
     function openThreads() {
       if (bodyEl().value.trim().length < 50) { showToast('스레드로 바꿀 본문을 먼저 써 주세요 (50자 이상).'); return; }
-      document.getElementById('th-url').value = currentPublishedUrl || '';
+      if (THREAD_POST_ID) { THREAD_POSTS = []; document.getElementById('th-posts').innerHTML = ''; }
+      setThreadsSource(null);
       document.getElementById('th-modal').classList.remove('hidden');
       if (!THREAD_POSTS.length) document.getElementById('th-status').textContent = '';
       document.getElementById(currentPublishedUrl ? 'btn-th-make' : 'th-url').focus();
     }
+    // 내 글 기억·스레드 순서에서: 그 글의 본문·주소로 바로 만들기
+    function openThreadsForPost(id) {
+      closeThreadsQueue();
+      THREAD_POSTS = []; document.getElementById('th-posts').innerHTML = '';
+      setThreadsSource(id);
+      const q = THREADS_QUEUE.get(id);
+      document.getElementById('th-status').textContent = q && q.posted_at ? `이미 ${formatKstDate(q.posted_at)}에 올린 글입니다.` : '';
+      document.getElementById('th-modal').classList.remove('hidden');
+      makeThreads();
+    }
+    async function loadThreadsQueue() {
+      try {
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'threads_queue_get' }) });
+        const data = await res.json();
+        threadsQueueReady = !!data.ready;
+        THREADS_QUEUE = new Map((data.queue || []).map(r => [r.post_id, r]));
+        if (lastMemIds && lastMemIds.length) renderMemoryCards(lastMemIds);
+      } catch (e) { console.warn('스레드 순서 불러오기 실패:', e); }
+    }
+    function threadsBadge(id) {
+      const q = THREADS_QUEUE.get(id);
+      return q && q.posted_at ? `<span class="tq-badge">스레드 ✓ ${escapeHtml(formatKstDate(q.posted_at).slice(5).replace('-', '.'))}</span>` : '';
+    }
+    async function markThreadsPosted(postId = THREAD_POST_ID, posted = true) {
+      if (!postId) return;
+      if (!getWorkKey()) { showToast('올림 표시는 작업 키(⚿)를 설정해야 저장됩니다.'); return; }
+      const { status, data } = await draftApi('threads_mark', { post_id: postId, posted });
+      if (status !== 200) { showToast(`⚠️ 저장하지 못했습니다: ${data.error || status}`); return; }
+      THREADS_QUEUE.set(postId, { ...(THREADS_QUEUE.get(postId) || { post_id: postId }), posted_at: data.mark.posted_at });
+      if (lastMemIds && lastMemIds.length) renderMemoryCards(lastMemIds);
+      if (!document.getElementById('tq-modal').classList.contains('hidden')) renderThreadsQueue();
+      if (postId === THREAD_POST_ID) document.getElementById('th-mark-text').textContent = posted ? '✓ 올렸음으로 표시했습니다.' : '표시를 지웠습니다.';
+      showToast(posted ? '✓ 스레드에 올렸음으로 표시했습니다.' : '올림 표시를 지웠습니다.');
+    }
+
+    // ---------- 스레드 순서 (지난 글을 어떤 순서로 올릴지) ----------
+    const BUCKET_LABEL = { evergreen: '먼저 올릴 글 · 지금 읽어도 좋은 글', series: '연재 · 순서대로', dated: '시점이 지난 글 · 회고로 바꾸거나 건너뛰기' };
+    function queueOrder() {
+      const rows = ARCHIVES_CACHE.filter(a => a.link).map(a => ({ a, q: THREADS_QUEUE.get(a.id) || {} }));
+      const byDate = (x, y) => x.a.date.localeCompare(y.a.date);
+      const ever = rows.filter(r => r.q.bucket === 'evergreen').sort((x, y) => (x.q.priority || 3) - (y.q.priority || 3) || byDate(x, y));
+      const series = new Map();
+      rows.filter(r => r.q.bucket === 'series').sort(byDate).forEach(r => { const k = r.q.series || '연재'; if (!series.has(k)) series.set(k, []); series.get(k).push(r); });
+      const dated = rows.filter(r => r.q.bucket === 'dated').sort((x, y) => (x.q.priority || 5) - (y.q.priority || 5) || byDate(x, y));
+      const none = rows.filter(r => !r.q.bucket);
+      return { ever, series, dated, none, total: rows.length, posted: rows.filter(r => r.q.posted_at).length };
+    }
+    // 오늘 올릴 추천: 안 올린 글 중 (연재는 다음 편, 그 밖은 우선순위) 가장 앞
+    function todayPick(o) {
+      const cands = [];
+      o.ever.forEach(r => { if (!r.q.posted_at) cands.push({ r, score: r.q.priority || 3 }); });
+      o.series.forEach(list => { const next = list.find(r => !r.q.posted_at); if (next) cands.push({ r: next, score: Math.min(...list.map(x => x.q.priority || 3)) }); });
+      cands.sort((x, y) => x.score - y.score || x.r.a.date.localeCompare(y.r.a.date));
+      return cands[0] ? cands[0].r : null;
+    }
+    function tqRow(r) {
+      const p = r.q.posted_at;
+      return `<div class="tq-row${p ? ' posted' : ''}">
+        <div class="t"><b title="${escapeHtml(r.a.title)}">${escapeHtml(r.a.title)}</b><span class="m">${escapeHtml(r.a.date.replace(/-/g, '.'))}${r.q.reason ? ' · ' + escapeHtml(r.q.reason) : ''}${r.q.priority ? ` · 우선순위 ${r.q.priority}` : ''}</span></div>
+        ${p ? `<span class="ok">✓ ${escapeHtml(formatKstDate(p).slice(5).replace('-', '.'))}</span><button class="link" onclick="markThreadsPosted(${r.a.id}, false)">표시 지우기</button>` : ''}
+        <button class="btn-sec btn-xs" onclick="openThreadsForPost(${r.a.id})">스레드용</button>
+      </div>`;
+    }
+    function renderThreadsQueue() {
+      const st = document.getElementById('tq-status'), today = document.getElementById('tq-today'), list = document.getElementById('tq-list');
+      if (!threadsQueueReady) { st.textContent = '스레드 기록 표가 아직 없습니다. SQL 009를 실행해야 순서와 올린 기록을 저장할 수 있습니다.'; today.innerHTML = ''; list.innerHTML = ''; return; }
+      const o = queueOrder();
+      st.innerHTML = `지난 글 ${o.total}편 중 <b>${o.posted}편</b> 올림${o.none.length ? ` · 아직 분류하지 않은 글 ${o.none.length}편 <button class="btn-sec btn-xs" onclick="buildThreadsQueue()">분류하기</button>` : ''} · 하루 1편 정도가 적당합니다.`;
+      const pick = todayPick(o);
+      today.innerHTML = pick ? `<div class="tq-today"><span>오늘 올릴 추천: <b>${escapeHtml(pick.a.title)}</b>${pick.q.series ? ` <span class="m">(${escapeHtml(pick.q.series)})</span>` : ''}</span><button class="btn btn-xs" onclick="openThreadsForPost(${pick.a.id})">스레드용 만들기</button></div>` : '';
+      let html = '';
+      if (o.ever.length) html += `<div class="tq-sec"><span>${BUCKET_LABEL.evergreen}</span><span class="muted">${o.ever.length}편</span></div>` + o.ever.map(tqRow).join('');
+      if (o.series.size) html += `<div class="tq-sec"><span>${BUCKET_LABEL.series}</span><span class="muted">${[...o.series.values()].reduce((s, l) => s + l.length, 0)}편</span></div>` +
+        [...o.series].map(([name, l]) => `<div class="tq-sub">${escapeHtml(name)} (${l.length}편)</div>` + l.map(tqRow).join('')).join('');
+      if (o.dated.length) html += `<div class="tq-sec"><span>${BUCKET_LABEL.dated}</span><span class="muted">${o.dated.length}편</span></div>` + o.dated.map(tqRow).join('');
+      if (o.none.length) html += `<div class="tq-sec"><span>아직 분류하지 않은 글</span><span class="muted">${o.none.length}편</span></div>` + o.none.map(tqRow).join('');
+      list.innerHTML = html;
+    }
+    async function openThreadsQueue() {
+      document.getElementById('tq-modal').classList.remove('hidden');
+      document.getElementById('tq-status').textContent = '불러오는 중…';
+      await loadThreadsQueue();
+      renderThreadsQueue();
+    }
+    function closeThreadsQueue() { document.getElementById('tq-modal').classList.add('hidden'); }
+    async function buildThreadsQueue() {
+      if (!getWorkKey()) { showToast('분류는 작업 키(⚿)를 설정해야 저장됩니다.'); return; }
+      document.getElementById('tq-status').textContent = 'AI가 지난 글을 분류하는 중… (20~40초)';
+      const { status, data } = await draftApi('threads_queue_build', {});
+      if (status !== 200) { document.getElementById('tq-status').textContent = `⚠️ 분류하지 못했습니다: ${data.error || status}`; return; }
+      showToast(`📋 지난 글 ${data.classified}편을 분류했습니다.`);
+      await loadThreadsQueue();
+      renderThreadsQueue();
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeThreadsQueue(); });
     function closeThreads() { document.getElementById('th-modal').classList.add('hidden'); }
     const charLen = (s) => [...String(s)].length;
     async function makeThreads() {
       const urlEl = document.getElementById('th-url'), st = document.getElementById('th-status'), btn = document.getElementById('btn-th-make');
       const url = urlEl.value.trim();
-      if (url && !/^https?:\/\/\S+$/.test(url)) { urlEl.classList.add('bad'); st.textContent = '블로그 주소가 올바르지 않습니다.'; return; }
-      if (!url && !confirm('블로그 주소 없이 만들까요? (링크 없이 스레드 글만 만듭니다)')) { urlEl.focus(); return; }
-      if (url !== currentPublishedUrl) { currentPublishedUrl = url; scheduleDbSave(); }
+      const postId = THREAD_POST_ID;
+      if (!postId) {
+        if (url && !/^https?:\/\/\S+$/.test(url)) { urlEl.classList.add('bad'); st.textContent = '블로그 주소가 올바르지 않습니다.'; return; }
+        if (!url && !confirm('블로그 주소 없이 만들까요? (링크 없이 스레드 글만 만듭니다)')) { urlEl.focus(); return; }
+        if (url !== currentPublishedUrl) { currentPublishedUrl = url; scheduleDbSave(); }
+      }
       btn.disabled = true; st.textContent = '스레드용 글을 만드는 중… (10초쯤)';
+      document.getElementById('th-mark').classList.add('hidden');
       try {
-        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          type: 'threads_draft', title: document.getElementById('draft-title').value, body: bodyEl().value,
-          blog_url: url, tone: document.getElementById('th-tone').value
-        }) });
+        const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(postId
+          ? { type: 'threads_draft', post_id: postId, tone: document.getElementById('th-tone').value }
+          : { type: 'threads_draft', title: document.getElementById('draft-title').value, body: bodyEl().value, blog_url: url, tone: document.getElementById('th-tone').value }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         THREAD_POSTS = data.posts.map(p => p.text);
         st.textContent = `게시물 ${THREAD_POSTS.length}개${THREAD_POSTS.length > 1 ? ' — 첫 게시물을 올린 뒤 나머지는 그 아래 답글(타래)로 이어 올리세요' : ''}. 글은 눌러서 바로 고칠 수 있습니다.` +
           (data.image_hint ? ` · 같이 올리면 좋을 사진: ${data.image_hint}` : '');
         renderThreads(data.limit || 500);
+        if (postId && postId === THREAD_POST_ID) {
+          const q = THREADS_QUEUE.get(postId);
+          document.getElementById('th-mark-text').textContent = q && q.posted_at ? `${formatKstDate(q.posted_at)}에 올렸음으로 표시된 글입니다.` : '스레드에 다 올리셨으면 표시해 두세요. "스레드 순서"와 내 글 기억에 ✓로 보입니다.';
+          document.getElementById('th-mark').classList.remove('hidden');
+        }
       } catch (e) {
         st.textContent = `⚠️ 만들지 못했습니다: ${e.message}`;
       } finally { btn.disabled = false; }
