@@ -441,6 +441,11 @@
           <option value="polite">가벼운 존댓말 (~했어요)</option>
           <option value="casual">편한 반말 (~했다)</option>
         </select>
+        <select id="th-len" title="게시물 개수">
+          <option value="short">짧게 (1~2개)</option>
+          <option value="normal" selected>보통 (글 길이에 맞춰)</option>
+          <option value="long">길게 (4~7개)</option>
+        </select>
         <button class="btn btn-xs" id="btn-th-make" onclick="makeThreads()">만들기</button>
       </div>
       <div class="status" id="th-status"></div>
@@ -2144,8 +2149,8 @@
       document.getElementById('th-mark').classList.add('hidden');
       try {
         const res = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(postId
-          ? { type: 'threads_draft', post_id: postId, tone: document.getElementById('th-tone').value }
-          : { type: 'threads_draft', title: document.getElementById('draft-title').value, body: bodyEl().value, blog_url: url, tone: document.getElementById('th-tone').value }) });
+          ? { type: 'threads_draft', post_id: postId, tone: document.getElementById('th-tone').value, length: document.getElementById('th-len').value }
+          : { type: 'threads_draft', title: document.getElementById('draft-title').value, body: bodyEl().value, blog_url: url, tone: document.getElementById('th-tone').value, length: document.getElementById('th-len').value }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         THREAD_POSTS = data.posts.map(p => p.text);

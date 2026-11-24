@@ -17,7 +17,14 @@ async function sb(env, path, init = {}) {
 }
 
 const LIMIT = 500;
-const MAX_POSTS = 4;
+const MAX_POSTS = 8;
+// 분량: 본문 길이에 맞춰 게시물 수를 정함 (짧게·보통·길게)
+function lengthRule(len, textLen) {
+  if (len === 'short') return 'posts는 1~2개. 가장 눈길 가는 한두 가지만 맛보기로 보여 주세요.';
+  if (len === 'long') return 'posts는 4~7개. 글의 흐름(계기 → 과정 → 숫자·경험 → 배운 점)을 따라 핵심 내용을 충분히 풀어 쓰세요. 게시물마다 하나의 장면이나 요점을 담고, 각 게시물을 300~420자 정도로 채우세요. 다만 가장 중요한 결론이나 팁 하나는 블로그에서 보도록 남겨 두세요.';
+  const n = textLen < 1500 ? '1~2' : textLen < 4000 ? '2~4' : '3~5';
+  return `posts는 ${n}개 (블로그 본문 ${textLen}자 기준). 게시물마다 하나의 요점을 담고, 너무 짧게 끝내지 말고 각 게시물을 200~420자 정도로 채우세요.`;
+}
 const TONES = {
   polite: '가벼운 존댓말 ("~했어요", "~더라고요"). 블로그보다 짧고 편하게, 친구에게 근황을 말하듯',
   casual: '편한 반말 ("~했다", "~더라", "~인 듯"). 혼잣말이나 일기처럼 짧고 솔직하게'
@@ -70,8 +77,9 @@ export async function handleThreadsDraft(body, env, ctx) {
     url = row.source_url || url;
     pastDate = publishedOf(row, await getPublishDates(ctx)) || String(row.created_at || '').slice(0, 10);
   }
-  const text = plainBody(raw).slice(0, 8000);
+  const text = plainBody(raw).slice(0, 12000);
   const tone = TONES[body.tone] ? body.tone : 'polite';
+  const len = ['short', 'normal', 'long'].includes(body.length) ? body.length : 'normal';
   if (text.length < 50) return { status: 400, json: { error: '스레드로 바꿀 블로그 본문이 너무 짧습니다 (50자 이상).' } };
   // 한 달 안에 쓴 글은 "지난 글" 말머리 없이
   if (pastDate && (Date.now() - Date.parse(pastDate)) / 864e5 < 30) pastDate = '';
@@ -86,7 +94,7 @@ export async function handleThreadsDraft(body, env, ctx) {
 # 규칙
 - [블로그 본문]에 있는 사실·경험·숫자만 씁니다. 없는 내용, 과장, 확인되지 않은 수치를 만들지 마세요.
 - 말투: ${TONES[tone]}
-- posts는 1~3개. 내용이 짧으면 1개로 충분합니다. 여러 개면 타래로 이어지는 순서대로.
+- ${lengthRule(len, text.length)} 여러 개면 타래로 이어지는 순서대로, 앞 게시물을 읽고 다음 게시물이 궁금해지도록.
 - 각 게시물은 ${LIMIT - 80}자 이내. 첫 게시물의 첫 줄은 시선을 끄는 한 문장(질문이나 의외의 사실).
 - 한 줄은 짧게, 줄바꿈을 자주. 블로그 서식 기호(==, **, ##, ---)나 목록 기호는 쓰지 마세요. 이모지는 게시물당 0~2개.
 - 마지막 게시물은 블로그로 이어지는 한 문장으로 끝내세요 (링크는 프로그램이 붙이니 주소는 쓰지 마세요).
@@ -109,11 +117,10 @@ ${text}`;
 
   // 해시태그·링크를 마지막 게시물에 붙인 뒤 글자 수 맞추기
   const tail = (tags.length ? `\n\n${tags.join(' ')}` : '') + linkLine;
-  posts = posts.flatMap(p => p.length > LIMIT ? splitLong(p, LIMIT) : [p]);
+  posts = posts.flatMap(p => p.length > LIMIT ? splitLong(p, LIMIT) : [p]).slice(0, MAX_POSTS);
   const last = posts.length - 1;
   if (posts[last].length + tail.length > LIMIT) posts.push(tail.trim());
   else posts[last] += tail;
-  posts = posts.slice(0, MAX_POSTS);
 
   return {
     status: 200,
